@@ -1,0 +1,16 @@
+[project]
+name = "ethicalturnoveranalysis"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dash>=4.0.0",
+    "folium>=0.20.0",
+    "matplotlib>=3.10.8",
+    "missingno>=0.5.2",
+    "numpy>=2.4.2",
+    "pandas>=3.0.0",
+    "plotly>=6.5.2",
+    "seaborn>=0.13.2",
+]
