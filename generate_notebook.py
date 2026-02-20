@@ -33,7 +33,7 @@ cells = []
 # TITLE
 # =============================================================================
 cells.append(
-    md("""# Analyse Éthique du Turnover — HumanForYou
+    md("""# Analyse Éthique du Turnover : HumanForYou
 ## Pipeline complète : EDA → Régression → Classification
 
 **Objectif** : Identifier les facteurs de départ des employés et proposer des leviers d'action RH.
@@ -58,10 +58,10 @@ Avant toute modélisation, il est essentiel d'identifier les variables susceptib
 | **MaritalStatus** | Critère protégé (situation familiale) | Corrélé au genre ; pénalise la vie privée de l'employé. |
 | **avg_work_hours** | Surveillance / Profilage comportemental | Issu du pointage individuel (in_time/out_time). Risque de normaliser le présentéisme. |
 | **std_work_hours** | Surveillance / Profilage comportemental | Même source. Pénalise les horaires atypiques (temps partiel thérapeutique, parents…). |
-| **days_absent** | Surveillance + Discrimination indirecte | Corrélé aux congés maladie, maternité, handicap — tous protégés par la loi. Art. 22 RGPD (profilage automatisé). |
+| **days_absent** | Surveillance + Discrimination indirecte | Corrélé aux congés maladie, maternité, handicap : tous protégés par la loi. Art. 22 RGPD (profilage automatisé). |
 | **DistanceFromHome** | Non actionnable | L'entreprise ne peut pas modifier le lieu de résidence de ses employés. Conserver cette variable pousserait à discriminer à l'embauche selon la localisation géographique du candidat. |
 
-> **Note sur Over18** : cette colonne est **constante** (tous les employés ont la valeur `Y`). Une colonne constante a une variance nulle — elle n'apporte aucune information discriminante au modèle et est donc supprimée pour raison technique, indépendamment de sa nature éthique.
+> **Note sur Over18** : cette colonne est **constante** (tous les employés ont la valeur `Y`). Une colonne constante a une variance nulle : elle n'apporte aucune information discriminante au modèle et est donc supprimée pour raison technique, indépendamment de sa nature éthique.
 
 ## Variables conservées avec vigilance
 
@@ -77,12 +77,12 @@ Avant toute modélisation, il est essentiel d'identifier les variables susceptib
 )
 
 # =============================================================================
-# PART 1 — EDA
+# PART 1 : EDA
 # =============================================================================
 cells.append(
-    md("""# Partie 1 — Analyse Exploratoire des Données (EDA)
+    md("""# Partie 1 : Analyse Exploratoire des Données (EDA)
 
-> Inspiré du Workshop « Utilisation IA — Exploratory Data Analysis »""")
+> Inspiré du Workshop « Utilisation IA : Exploratory Data Analysis »""")
 )
 
 cells.append(md("## 1.1 Environnement et imports"))
@@ -129,7 +129,7 @@ cells.append(
 for name, df in [('general', general), ('emp_survey', emp_survey),
                   ('mgr_survey', mgr_survey), ('in_time', in_time), ('out_time', out_time)]:
     print(f"\\n{'='*60}")
-    print(f" {name} — {df.shape[0]} lignes × {df.shape[1]} colonnes")
+    print(f" {name} : {df.shape[0]} lignes × {df.shape[1]} colonnes")
     print(f"{'='*60}")
     print(df.dtypes.value_counts().to_string())
     print(f"\\nValeurs manquantes : {df.isnull().sum().sum()}")""")
@@ -140,7 +140,7 @@ cells.append(code("""general.head()"""))
 cells.append(code("""general.describe(include='all').T"""))
 
 cells.append(
-    md("""## 1.4 Feature Engineering — Heures de travail
+    md("""## 1.4 Feature Engineering : Heures de travail
 
 Les fichiers `in_time` et `out_time` contiennent les horodatages d'entrée/sortie pour chaque jour ouvré de 2015.  
 On va en extraire des métriques agrégées par employé :
@@ -312,7 +312,7 @@ axes[1].pie(counts.values, labels=['No', 'Yes'], autopct='%1.1f%%',
             colors=colors, startangle=90, explode=[0, 0.05])
 axes[1].set_title('Proportion Attrition', fontsize=14)
 
-plt.suptitle(f'Variable cible — Attrition (n={len(df)})', fontsize=16, y=1.02)
+plt.suptitle(f'Variable cible : Attrition (n={len(df)})', fontsize=16, y=1.02)
 plt.tight_layout()
 plt.show()
 
@@ -410,7 +410,7 @@ print("\\nTop 10 corrélations (valeur absolue) :")
 print(corr_attrition.head(10).to_string())""")
 )
 
-cells.append(md("### Boxplots — Variables numériques vs Attrition"))
+cells.append(md("### Boxplots : Variables numériques vs Attrition"))
 
 cells.append(
     code("""# Top variables numériques les plus corrélées avec Attrition
@@ -470,10 +470,10 @@ cells.append(
 )
 
 # =============================================================================
-# PART 2 — REGRESSION
+# PART 2 : REGRESSION
 # =============================================================================
 cells.append(
-    md("""# Partie 2 — Régression
+    md("""# Partie 2 : Régression
 
 > Inspiré du Workshop « Régression »
 
@@ -590,10 +590,10 @@ y_pred_sm = model_sm.predict(X_sm_test)
 
 mse_sm = mean_squared_error(y_test_reg, y_pred_sm)
 r2_sm = r2_score(y_test_reg, y_pred_sm)
-print(f"\\nstatsmodels OLS — MSE: {mse_sm:,.0f} | R²: {r2_sm:.4f}")""")
+print(f"\\nstatsmodels OLS : MSE: {mse_sm:,.0f} | R²: {r2_sm:.4f}")""")
 )
 
-cells.append(md("""## 2.4 sklearn — Comparaison de modèles de régression"""))
+cells.append(md("""## 2.4 sklearn : Comparaison de modèles de régression"""))
 
 cells.append(
     code("""from sklearn.linear_model import LinearRegression
@@ -716,7 +716,7 @@ axes[0].plot([y_test_reg.min(), y_test_reg.max()], [y_test_reg.min(), y_test_reg
              'r--', linewidth=2, label='Prédiction parfaite')
 axes[0].set_xlabel('Valeurs réelles')
 axes[0].set_ylabel('Prédictions')
-axes[0].set_title(f'{best_reg_name} — Prédictions vs Réel')
+axes[0].set_title(f'{best_reg_name} : Prédictions vs Réel')
 axes[0].legend()
 
 # Résidus
@@ -725,7 +725,7 @@ axes[1].scatter(y_pred_best, residuals, alpha=0.5, s=20, color='coral')
 axes[1].axhline(y=0, color='black', linestyle='-', linewidth=0.5)
 axes[1].set_xlabel('Prédictions')
 axes[1].set_ylabel('Résidus')
-axes[1].set_title(f'{best_reg_name} — Résidus')
+axes[1].set_title(f'{best_reg_name} : Résidus')
 
 plt.tight_layout()
 plt.show()""")
@@ -744,10 +744,10 @@ cells.append(
 )
 
 # =============================================================================
-# PART 3 — CLASSIFICATION
+# PART 3 : CLASSIFICATION
 # =============================================================================
 cells.append(
-    md("""# Partie 3 — Classification
+    md("""# Partie 3 : Classification
 
 > Inspiré du Workshop « Classification »
 
@@ -882,9 +882,9 @@ cells.append(
 )
 
 # =============================================================================
-# PART 4 — COMPARATIVE ANALYSIS
+# PART 4 : COMPARATIVE ANALYSIS
 # =============================================================================
-cells.append(md("""# Partie 4 — Analyse Comparative et Recommandations"""))
+cells.append(md("""# Partie 4 : Analyse Comparative et Recommandations"""))
 
 cells.append(md("## 4.1 Tableau comparatif global"))
 
@@ -922,7 +922,7 @@ for i, (name, clf) in enumerate(classifiers.items()):
 for j in range(i + 1, len(axes)):
     axes[j].set_visible(False)
 
-plt.suptitle('Matrices de confusion — Tous les classifieurs', fontsize=16, y=1.02)
+plt.suptitle('Matrices de confusion : Tous les classifieurs', fontsize=16, y=1.02)
 plt.tight_layout()
 plt.show()""")
 )
@@ -947,7 +947,7 @@ for name, clf in classifiers.items():
 plt.plot([0, 1], [0, 1], 'k--', linewidth=1, label='Random (AUC=0.500)')
 plt.xlabel('Taux de faux positifs (FPR)', fontsize=12)
 plt.ylabel('Taux de vrais positifs (TPR)', fontsize=12)
-plt.title('Courbes ROC — Comparaison des classifieurs', fontsize=14)
+plt.title('Courbes ROC : Comparaison des classifieurs', fontsize=14)
 plt.legend(loc='lower right', fontsize=10)
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
@@ -975,7 +975,7 @@ baseline = y_test_clf.mean()
 plt.axhline(y=baseline, color='gray', linestyle='--', label=f'Baseline ({baseline:.3f})')
 plt.xlabel('Recall', fontsize=12)
 plt.ylabel('Precision', fontsize=12)
-plt.title('Courbes Precision-Recall — Comparaison des classifieurs', fontsize=14)
+plt.title('Courbes Precision-Recall : Comparaison des classifieurs', fontsize=14)
 plt.legend(loc='upper right', fontsize=10)
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
@@ -1004,7 +1004,7 @@ for ax, (name, model_key) in zip(axes, [('Random Forest', 'Random Forest'),
     ax.set_yticks(range(len(indices)))
     ax.set_yticklabels([feature_names[i] for i in indices])
     ax.set_xlabel('Importance')
-    ax.set_title(f'{name} — Top 15 Features', fontsize=13)
+    ax.set_title(f'{name} : Top 15 Features', fontsize=13)
 
 plt.suptitle('Importance des features pour la prédiction d\\'Attrition', fontsize=15, y=1.02)
 plt.tight_layout()
@@ -1028,7 +1028,7 @@ for ax, metric, color in zip(axes.flatten(), metrics_to_plot, colors_metrics):
     for i, v in enumerate(values):
         ax.text(v + 0.01, i, f'{v:.3f}', va='center', fontsize=10)
 
-plt.suptitle('Comparaison des classifieurs — Toutes les métriques', fontsize=16, y=1.02)
+plt.suptitle('Comparaison des classifieurs : Toutes les métriques', fontsize=16, y=1.02)
 plt.tight_layout()
 plt.show()""")
 )
@@ -1074,7 +1074,7 @@ Les variables retenues dans le modèle pointent vers des **leviers organisationn
 
 ### Limites
 - Dataset de taille modeste (~4700 employés d'une seule entreprise indienne)
-- Données transversales (pas de suivi longitudinal — on ne sait pas *quand* les facteurs ont changé)
+- Données transversales (pas de suivi longitudinal : on ne sait pas *quand* les facteurs ont changé)
 - Variables auto-déclarées (enquêtes de satisfaction → biais de désirabilité sociale)
 - Le retrait des variables protégées réduit la capacité prédictive mais c'est un compromis éthique assumé
 - Pas d'audit de disparate impact possible sans les variables protégées en colonne de test (un audit séparé est nécessaire)""")
