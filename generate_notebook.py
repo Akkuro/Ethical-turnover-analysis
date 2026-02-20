@@ -42,6 +42,41 @@ cells.append(
 )
 
 # =============================================================================
+# ETHICS SECTION
+# =============================================================================
+cells.append(
+    md("""# Cadrage Éthique
+
+Avant toute modélisation, il est essentiel d'identifier les variables susceptibles de mener à du **profilage discriminatoire**. L'objectif n'est pas de prédire *qui* va partir (profilage individuel), mais d'identifier les **leviers organisationnels** sur lesquels l'entreprise peut agir.
+
+## Variables exclues de la modélisation
+
+| Variable | Type de risque | Justification du retrait |
+|---|---|---|
+| **Gender** | Critère protégé (discrimination directe) | Code du travail L.1132-1, RGPD art. 9. Un modèle qui corrèle genre et attrition normaliserait un biais structurel. |
+| **Age** | Critère protégé (discrimination directe) | Un modèle qui apprend « les jeunes partent plus » pourrait conduire à discriminer à l'embauche. |
+| **MaritalStatus** | Critère protégé (situation familiale) | Corrélé au genre ; pénalise la vie privée de l'employé. |
+| **avg_work_hours** | Surveillance / Profilage comportemental | Issu du pointage individuel (in_time/out_time). Risque de normaliser le présentéisme. |
+| **std_work_hours** | Surveillance / Profilage comportemental | Même source. Pénalise les horaires atypiques (temps partiel thérapeutique, parents…). |
+| **days_absent** | Surveillance + Discrimination indirecte | Corrélé aux congés maladie, maternité, handicap — tous protégés par la loi. Art. 22 RGPD (profilage automatisé). |
+| **DistanceFromHome** | Non actionnable | L'entreprise ne peut pas modifier le lieu de résidence de ses employés. Conserver cette variable pousserait à discriminer à l'embauche selon la localisation géographique du candidat. |
+
+> **Note sur Over18** : cette colonne est **constante** (tous les employés ont la valeur `Y`). Une colonne constante a une variance nulle — elle n'apporte aucune information discriminante au modèle et est donc supprimée pour raison technique, indépendamment de sa nature éthique.
+
+## Variables conservées avec vigilance
+
+| Variable | Risque résiduel | Raison de conservation |
+|---|---|---|
+| **EducationField** | Proxy potentiel du genre (filières genrées) | Conservé car levier RH (plans de formation ciblés), mais à surveiller via audit de disparate impact. |
+| **MonthlyIncome** | Reflète des inégalités historiques | Conservé en régression (cible) et comme levier salarial ; ne pas l'utiliser pour justifier des écarts existants. |
+
+## Principe directeur
+
+> **Les prédictions du modèle ne doivent jamais être appliquées à un individu.**  
+> Elles servent à détecter des **tendances organisationnelles** (politique salariale, fréquence des promotions, charge de travail) afin d'améliorer les conditions de travail pour tous.""")
+)
+
+# =============================================================================
 # PART 1 — EDA
 # =============================================================================
 cells.append(
@@ -192,10 +227,13 @@ plt.show()""")
 cells.append(
     md("""## 1.7 Nettoyage des données
 
-1. **Imputation** des valeurs manquantes numériques par la médiane
+1. **Encodage** de la variable cible `Attrition` en binaire (Yes=1, No=0)
 2. **Suppression** des colonnes constantes (EmployeeCount, StandardHours, Over18)
 3. **Suppression** de EmployeeID (identifiant, pas une feature)
-4. **Encodage** de la variable cible `Attrition` en binaire (Yes=1, No=0)""")
+4. **Suppression éthique** des variables sensibles / protégées (Gender, Age, MaritalStatus)
+5. **Suppression éthique** des métriques de surveillance (avg_work_hours, std_work_hours, days_absent)
+6. **Suppression pragmatique** de DistanceFromHome (non actionnable par l'entreprise)
+6. **Imputation** des valeurs manquantes numériques par la médiane""")
 )
 
 cells.append(
@@ -206,19 +244,36 @@ df['Attrition'] = df['Attrition'].map({'Yes': 1, 'No': 0})
 constant_cols = [col for col in df.columns if df[col].nunique() <= 1]
 print(f"Colonnes constantes : {constant_cols}")
 
-# Identifier les colonnes quasi-constantes
-quasi_constant = [col for col in df.columns if df[col].nunique() == 2 and col != 'Attrition']
-print(f"Colonnes quasi-constantes (2 valeurs uniques) : {quasi_constant}")
-
-# Supprimer colonnes inutiles
+# --- Colonnes à supprimer ---
+# 1) Techniques : constantes + identifiant
 cols_to_drop = constant_cols + ['EmployeeID']
-# Vérifier aussi Over18 et StandardHours si pas déjà dans constant_cols
 for c in ['Over18', 'StandardHours', 'EmployeeCount']:
     if c in df.columns and c not in cols_to_drop:
         cols_to_drop.append(c)
 
-df = df.drop(columns=[c for c in cols_to_drop if c in df.columns])
-print(f"\\nColonnes supprimées : {cols_to_drop}")
+# 2) Éthiques : critères protégés (discrimination directe)
+ethical_protected = ['Gender', 'Age', 'MaritalStatus']
+
+# 3) Éthiques : métriques de surveillance issues du pointage
+ethical_surveillance = ['avg_work_hours', 'std_work_hours', 'days_absent']
+
+# 4) Pragmatique : variable non actionnable par l'entreprise
+non_actionable = ['DistanceFromHome']
+
+cols_to_drop_ethical = [c for c in ethical_protected + ethical_surveillance + non_actionable if c in df.columns]
+
+print(f"\\n--- Suppressions techniques ---")
+print(f"Colonnes constantes / inutiles : {[c for c in cols_to_drop if c in df.columns]}")
+print(f"\\n--- Suppressions éthiques ---")
+print(f"Critères protégés (loi anti-discrimination) : {[c for c in ethical_protected if c in df.columns]}")
+print(f"Surveillance comportementale (RGPD art. 22) : {[c for c in ethical_surveillance if c in df.columns]}")
+print(f"\\n--- Suppressions pragmatiques ---")
+print(f"Non actionnable par l'entreprise : {[c for c in non_actionable if c in df.columns]}")
+
+all_to_drop = list(set(cols_to_drop + cols_to_drop_ethical))
+df = df.drop(columns=[c for c in all_to_drop if c in df.columns])
+
+print(f"\\nTotal colonnes supprimées : {len([c for c in all_to_drop if c in df.columns or c in all_to_drop])}")
 print(f"Dataset après nettoyage : {df.shape}")""")
 )
 
@@ -983,30 +1038,46 @@ cells.append(
 
 ### Choix du modèle
 Dans le contexte RH de HumanForYou, le **Recall** est la métrique la plus importante :
-- Un faux négatif (employé à risque non détecté) a un coût élevé (perte de talent)
-- Un faux positif (employé stable signalé) a un coût faible (attention RH supplémentaire)
+- Un **faux négatif** (employé à risque non détecté) a un coût élevé → perte de talent, coût de remplacement (6-9 mois de salaire)
+- Un **faux positif** (employé stable signalé à tort) a un coût faible → attention RH supplémentaire, entretien de suivi
 
 → Privilégier le modèle avec le **meilleur Recall** tout en conservant un F1-Score acceptable.
 
 ### Leviers d'action RH identifiés
-Sur la base de l'analyse EDA et de l'importance des features :
 
-1. **Satisfaction au travail** (EnvironmentSatisfaction, JobSatisfaction) → Améliorer les conditions de travail
-2. **Équilibre vie pro/perso** (WorkLifeBalance, avg_work_hours) → Flexibilité horaire, télétravail
-3. **Évolution de carrière** (YearsSinceLastPromotion, YearsAtCompany) → Plans de carrière, promotions régulières
-4. **Rémunération** (MonthlyIncome, PercentSalaryHike) → Révisions salariales ciblées
-5. **Engagement** (JobInvolvement, TrainingTimesLastYear) → Formations, responsabilisation
+Les variables retenues dans le modèle pointent vers des **leviers organisationnels**, non des caractéristiques individuelles :
 
-### Considérations éthiques
-- **Biais** : Vérifier que le modèle ne discrimine pas selon le genre, l'âge ou d'autres critères protégés
-- **Transparence** : Les prédictions doivent être explicables aux RH (importance des features)
-- **Usage responsable** : Le modèle est un outil d'aide à la décision, pas un substitut au jugement humain
-- **Protection des données** : Les données personnelles doivent être traitées conformément au RGPD
+1. **Satisfaction au travail** (EnvironmentSatisfaction, JobSatisfaction) → Enquêtes régulières, amélioration des conditions de travail, espaces collaboratifs
+2. **Équilibre vie pro/perso** (WorkLifeBalance) → Flexibilité horaire, télétravail, droit à la déconnexion
+3. **Évolution de carrière** (YearsSinceLastPromotion, YearsAtCompany) → Plans de carrière individualisés, revues annuelles, mobilité interne
+4. **Rémunération** (MonthlyIncome, PercentSalaryHike, StockOptionLevel) → Benchmarks salariaux sectoriels, révisions ciblées, intéressement
+5. **Engagement** (JobInvolvement, TrainingTimesLastYear) → Budget formation, responsabilisation, mentorat
+
+### Bilan éthique
+
+#### Ce qui a été fait
+- **Retrait des critères protégés** : Gender, Age, MaritalStatus exclus du modèle pour éviter toute discrimination directe (Code du travail L.1132-1)
+- **Retrait des données de surveillance** : avg_work_hours, std_work_hours, days_absent supprimés pour éviter le profilage comportemental (RGPD art. 22) et la pénalisation des arrêts maladie/congés parentaux
+- **Focus organisationnel** : le modèle identifie des tendances structurelles, pas des profils individuels à risque
+
+#### Risques résiduels à surveiller
+- **EducationField** pourrait être un proxy du genre (filières genrées) → surveiller les prédictions par sous-groupe via audit de disparate impact
+- **MonthlyIncome** reflète des inégalités salariales historiques → utiliser pour corriger les écarts, pas pour les justifier
+- **DistanceFromHome** a été retirée car non actionnable par l'entreprise (on ne peut pas déplacer les employés)
+
+#### Cadre d'usage recommandé
+1. **Pas de décision individuelle automatisée** : le modèle est un outil d'aide à la décision RH globale (art. 22 RGPD)
+2. **Transparence** : communiquer aux représentants du personnel l'existence et l'objectif du modèle
+3. **Audit régulier** : vérifier l'absence de biais indirect (disparate impact) sur les groupes protégés
+4. **Droit d'accès** : tout employé doit pouvoir connaître les données utilisées (RGPD art. 15)
+5. **Finalité limitée** : les résultats ne doivent servir qu'à améliorer les conditions de travail, jamais à évaluer ou sanctionner
 
 ### Limites
-- Dataset de taille modeste (~4700 employés d'une seule entreprise)
-- Données transversales (pas de suivi longitudinal)
-- Variables auto-déclarées (biais de déclaration possible)""")
+- Dataset de taille modeste (~4700 employés d'une seule entreprise indienne)
+- Données transversales (pas de suivi longitudinal — on ne sait pas *quand* les facteurs ont changé)
+- Variables auto-déclarées (enquêtes de satisfaction → biais de désirabilité sociale)
+- Le retrait des variables protégées réduit la capacité prédictive mais c'est un compromis éthique assumé
+- Pas d'audit de disparate impact possible sans les variables protégées en colonne de test (un audit séparé est nécessaire)""")
 )
 
 # =============================================================================
