@@ -1,6 +1,13 @@
-"""Generate the complete main.ipynb notebook for HumanForYou Attrition Analysis."""
+"""Generate the complete main.ipynb notebook for HumanForYou Attrition Analysis.
 
-import json
+Structure:
+  - Cadrage éthique
+  - Partie 1 : EDA (avec détection de multicolinéarité)
+  - Partie 2 : Classification (boucle éthique vs non-éthique, optimisation, deep-dive)
+  - Partie 3 : Analyse comparative et recommandations
+"""
+
+import json, pathlib
 
 
 def md(source):
@@ -29,27 +36,27 @@ def code(source):
 
 cells = []
 
-# =============================================================================
-# TITLE
-# =============================================================================
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║ TITLE                                                                     ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
 cells.append(
     md("""# Analyse Éthique du Turnover : HumanForYou
-## Pipeline complète : EDA → Régression → Classification
+## Pipeline complète : EDA → Classification (éthique vs non-éthique)
 
-**Objectif** : Identifier les facteurs de départ des employés et proposer des leviers d'action RH.
+**Objectif** : Identifier les facteurs organisationnels de départ des employés et proposer des leviers d'action RH, tout en respectant un cadre éthique strict.
 
 **Dataset** : 5 fichiers CSV (general_data, employee_survey, manager_survey, in_time, out_time)""")
 )
 
-# =============================================================================
-# ETHICS SECTION
-# =============================================================================
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║ ETHICS SECTION                                                            ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
 cells.append(
     md("""# Cadrage Éthique
 
 Avant toute modélisation, il est essentiel d'identifier les variables susceptibles de mener à du **profilage discriminatoire**. L'objectif n'est pas de prédire *qui* va partir (profilage individuel), mais d'identifier les **leviers organisationnels** sur lesquels l'entreprise peut agir.
 
-## Variables exclues de la modélisation
+## Variables exclues de la modélisation éthique
 
 | Variable | Type de risque | Justification du retrait |
 |---|---|---|
@@ -68,17 +75,25 @@ Avant toute modélisation, il est essentiel d'identifier les variables susceptib
 | Variable | Risque résiduel | Raison de conservation |
 |---|---|---|
 | **EducationField** | Proxy potentiel du genre (filières genrées) | Conservé car levier RH (plans de formation ciblés), mais à surveiller via audit de disparate impact. |
-| **MonthlyIncome** | Reflète des inégalités historiques | Conservé en régression (cible) et comme levier salarial ; ne pas l'utiliser pour justifier des écarts existants. |
+| **MonthlyIncome** | Reflète des inégalités historiques | Conservé comme levier salarial ; ne pas l'utiliser pour justifier des écarts existants. |
 
 ## Principe directeur
 
-> **Les prédictions du modèle ne doivent jamais être appliquées à un individu.**  
-> Elles servent à détecter des **tendances organisationnelles** (politique salariale, fréquence des promotions, charge de travail) afin d'améliorer les conditions de travail pour tous.""")
+> **Les prédictions du modèle ne doivent jamais être appliquées à un individu.**
+> Elles servent à détecter des **tendances organisationnelles** (politique salariale, fréquence des promotions, charge de travail) afin d'améliorer les conditions de travail pour tous.
+
+## Approche comparative
+
+Nous exécutons la pipeline de classification **deux fois** via une boucle :
+1. **Avec filtre éthique** : variables sensibles supprimées
+2. **Sans filtre éthique** : toutes les variables conservées
+
+Les résultats sont comparés côte à côte en Partie 3 pour quantifier l'impact du filtre éthique sur les performances.""")
 )
 
-# =============================================================================
-# PART 1 : EDA
-# =============================================================================
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║ PART 1 : EDA                                                              ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
 cells.append(
     md("""# Partie 1 : Analyse Exploratoire des Données (EDA)
 
@@ -94,15 +109,21 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import missingno as msno
 import warnings
+import time
 
 warnings.filterwarnings('ignore')
 sns.set_theme(style='whitegrid', palette='muted')
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', 100)
 
+# Seed pour la reproductibilité
+RANDOM_STATE = 42
+np.random.seed(RANDOM_STATE)
+
 %matplotlib inline
 
-print("Environnement prêt ✓")""")
+print("Environnement prêt ✓")
+print(f"Random state : {RANDOM_STATE}")""")
 )
 
 cells.append(md("## 1.2 Chargement des données"))
@@ -126,13 +147,13 @@ cells.append(md("## 1.3 Exploration initiale"))
 
 cells.append(
     code("""# Aperçu de chaque table
-for name, df in [('general', general), ('emp_survey', emp_survey),
-                  ('mgr_survey', mgr_survey), ('in_time', in_time), ('out_time', out_time)]:
+for name, tbl in [('general', general), ('emp_survey', emp_survey),
+                   ('mgr_survey', mgr_survey), ('in_time', in_time), ('out_time', out_time)]:
     print(f"\\n{'='*60}")
-    print(f" {name} : {df.shape[0]} lignes × {df.shape[1]} colonnes")
+    print(f" {name} : {tbl.shape[0]} lignes × {tbl.shape[1]} colonnes")
     print(f"{'='*60}")
-    print(df.dtypes.value_counts().to_string())
-    print(f"\\nValeurs manquantes : {df.isnull().sum().sum()}")""")
+    print(tbl.dtypes.value_counts().to_string())
+    print(f"\\nValeurs manquantes : {tbl.isnull().sum().sum()}")""")
 )
 
 cells.append(code("""general.head()"""))
@@ -142,7 +163,7 @@ cells.append(code("""general.describe(include='all').T"""))
 cells.append(
     md("""## 1.4 Feature Engineering : Heures de travail
 
-Les fichiers `in_time` et `out_time` contiennent les horodatages d'entrée/sortie pour chaque jour ouvré de 2015.  
+Les fichiers `in_time` et `out_time` contiennent les horodatages d'entrée/sortie pour chaque jour ouvré de 2015.
 On va en extraire des métriques agrégées par employé :
 - **avg_work_hours** : nombre moyen d'heures travaillées par jour
 - **std_work_hours** : écart-type des heures travaillées (régularité)
@@ -199,7 +220,7 @@ print(f"Colonnes : {list(df.columns)}")
 df.head()""")
 )
 
-cells.append(md("""## 1.6 Analyse des valeurs manquantes"""))
+cells.append(md("## 1.6 Analyse des valeurs manquantes"))
 
 cells.append(
     code("""# Matrice de valeurs manquantes
@@ -228,12 +249,10 @@ cells.append(
     md("""## 1.7 Nettoyage des données
 
 1. **Encodage** de la variable cible `Attrition` en binaire (Yes=1, No=0)
-2. **Suppression** des colonnes constantes (EmployeeCount, StandardHours, Over18)
+2. **Suppression** des colonnes constantes (détectées automatiquement via `nunique() <= 1`)
 3. **Suppression** de EmployeeID (identifiant, pas une feature)
-4. **Suppression éthique** des variables sensibles / protégées (Gender, Age, MaritalStatus)
-5. **Suppression éthique** des métriques de surveillance (avg_work_hours, std_work_hours, days_absent)
-6. **Suppression pragmatique** de DistanceFromHome (non actionnable par l'entreprise)
-6. **Imputation** des valeurs manquantes numériques par la médiane""")
+4. **Imputation** des valeurs manquantes (médiane pour numériques, mode pour catégorielles)
+5. **Sauvegarde** du dataset complet avant filtre éthique (pour comparaison)""")
 )
 
 cells.append(
@@ -244,37 +263,13 @@ df['Attrition'] = df['Attrition'].map({'Yes': 1, 'No': 0})
 constant_cols = [col for col in df.columns if df[col].nunique() <= 1]
 print(f"Colonnes constantes : {constant_cols}")
 
-# --- Colonnes à supprimer ---
-# 1) Techniques : constantes + identifiant
-cols_to_drop = constant_cols + ['EmployeeID']
-for c in ['Over18', 'StandardHours', 'EmployeeCount']:
-    if c in df.columns and c not in cols_to_drop:
-        cols_to_drop.append(c)
-
-# 2) Éthiques : critères protégés (discrimination directe)
-ethical_protected = ['Gender', 'Age', 'MaritalStatus']
-
-# 3) Éthiques : métriques de surveillance issues du pointage
-ethical_surveillance = ['avg_work_hours', 'std_work_hours', 'days_absent']
-
-# 4) Pragmatique : variable non actionnable par l'entreprise
-non_actionable = ['DistanceFromHome']
-
-cols_to_drop_ethical = [c for c in ethical_protected + ethical_surveillance + non_actionable if c in df.columns]
-
-print(f"\\n--- Suppressions techniques ---")
-print(f"Colonnes constantes / inutiles : {[c for c in cols_to_drop if c in df.columns]}")
-print(f"\\n--- Suppressions éthiques ---")
-print(f"Critères protégés (loi anti-discrimination) : {[c for c in ethical_protected if c in df.columns]}")
-print(f"Surveillance comportementale (RGPD art. 22) : {[c for c in ethical_surveillance if c in df.columns]}")
-print(f"\\n--- Suppressions pragmatiques ---")
-print(f"Non actionnable par l'entreprise : {[c for c in non_actionable if c in df.columns]}")
-
-all_to_drop = list(set(cols_to_drop + cols_to_drop_ethical))
-df = df.drop(columns=[c for c in all_to_drop if c in df.columns])
-
-print(f"\\nTotal colonnes supprimées : {len([c for c in all_to_drop if c in df.columns or c in all_to_drop])}")
-print(f"Dataset après nettoyage : {df.shape}")""")
+# Suppressions techniques uniquement (constantes + identifiant)
+# Note : Over18, EmployeeCount, StandardHours seront détectés automatiquement
+# car ce sont des colonnes constantes (nunique <= 1)
+cols_to_drop_tech = list(set(constant_cols + ['EmployeeID']))
+df = df.drop(columns=[c for c in cols_to_drop_tech if c in df.columns])
+print(f"Colonnes techniques supprimées : {cols_to_drop_tech}")
+print(f"Dataset après nettoyage technique : {df.shape}")""")
 )
 
 cells.append(
@@ -287,27 +282,73 @@ for col in numeric_cols:
         df[col].fillna(median_val, inplace=True)
         print(f"{col}: {count} NaN remplacés par médiane = {median_val}")
 
-# Vérification
+# Imputation des valeurs manquantes catégorielles par le mode
+cat_cols_all = df.select_dtypes(include=['object']).columns.tolist()
+for col in cat_cols_all:
+    if df[col].isnull().sum() > 0:
+        mode_val = df[col].mode()[0]
+        count = df[col].isnull().sum()
+        df[col].fillna(mode_val, inplace=True)
+        print(f"{col}: {count} NaN remplacés par mode = {mode_val}")
+
 print(f"\\nValeurs manquantes restantes : {df.isnull().sum().sum()}")""")
 )
 
-cells.append(md("""## 1.8 Analyse univariée"""))
+cells.append(
+    code("""# ═══════════════════════════════════════════════════════════
+# SAUVEGARDE du dataset complet (avant filtre éthique)
+# Sera réutilisé pour la pipeline non-éthique
+# ═══════════════════════════════════════════════════════════
+df_full = df.copy()
+print(f"df_full sauvegardé : {df_full.shape} (toutes les variables, pour comparaison)")""")
+)
 
-cells.append(md("""### Distribution de la variable cible (Attrition)"""))
+cells.append(
+    md("""## 1.8 Filtre éthique
+
+Application des suppressions éthiques et pragmatiques décidées dans le cadrage.""")
+)
+
+cells.append(
+    code("""# --- Suppressions éthiques ---
+# 1) Critères protégés (discrimination directe)
+ethical_protected = ['Gender', 'Age', 'MaritalStatus']
+
+# 2) Métriques de surveillance issues du pointage
+ethical_surveillance = ['avg_work_hours', 'std_work_hours', 'days_absent']
+
+# 3) Variable non actionnable par l'entreprise
+non_actionable = ['DistanceFromHome']
+
+cols_to_drop_ethical = [c for c in ethical_protected + ethical_surveillance + non_actionable
+                        if c in df.columns]
+
+print("--- Suppressions éthiques ---")
+print(f"Critères protégés (loi anti-discrimination) : {[c for c in ethical_protected if c in df.columns]}")
+print(f"Surveillance comportementale (RGPD art. 22) : {[c for c in ethical_surveillance if c in df.columns]}")
+print(f"Non actionnable par l'entreprise             : {[c for c in non_actionable if c in df.columns]}")
+
+df = df.drop(columns=cols_to_drop_ethical)
+print(f"\\nDataset éthique : {df.shape}")
+print(f"Colonnes restantes : {list(df.columns)}")""")
+)
+
+# --- EDA visuals (on the ethical dataset) ---
+
+cells.append(md("## 1.9 Analyse univariée"))
+cells.append(md("### Distribution de la variable cible (Attrition)"))
 
 cells.append(
     code("""fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-# Countplot
 counts = df['Attrition'].value_counts()
 colors = ['#2ecc71', '#e74c3c']
 axes[0].bar(['No (0)', 'Yes (1)'], counts.values, color=colors, edgecolor='black')
 axes[0].set_title('Distribution de Attrition', fontsize=14)
-axes[0].set_ylabel('Nombre d\\'employés')
+axes[0].set_ylabel("Nombre d'employés")
 for i, v in enumerate(counts.values):
     axes[0].text(i, v + 10, f'{v} ({v/len(df)*100:.1f}%)', ha='center', fontweight='bold')
 
-# Pie chart
 axes[1].pie(counts.values, labels=['No', 'Yes'], autopct='%1.1f%%',
             colors=colors, startangle=90, explode=[0, 0.05])
 axes[1].set_title('Proportion Attrition', fontsize=14)
@@ -338,7 +379,6 @@ for i, col in enumerate(num_cols_no_target):
     axes[i].axvline(df[col].median(), color='green', linestyle='--', alpha=0.7, label=f'median={df[col].median():.1f}')
     axes[i].legend(fontsize=7)
 
-# Masquer les axes inutilisés
 for j in range(i + 1, len(axes)):
     axes[j].set_visible(False)
 
@@ -374,8 +414,7 @@ else:
     print("Aucune variable catégorielle restante.")""")
 )
 
-cells.append(md("""## 1.9 Analyse bivariée"""))
-
+cells.append(md("## 1.10 Analyse bivariée"))
 cells.append(md("### Matrice de corrélation"))
 
 cells.append(
@@ -394,8 +433,7 @@ plt.show()""")
 cells.append(md("### Top corrélations avec Attrition"))
 
 cells.append(
-    code("""# Corrélations avec la cible
-corr_attrition = corr_matrix['Attrition'].drop('Attrition').sort_values(key=abs, ascending=False)
+    code("""corr_attrition = corr_matrix['Attrition'].drop('Attrition').sort_values(key=abs, ascending=False)
 
 plt.figure(figsize=(10, 8))
 colors = ['#e74c3c' if v > 0 else '#3498db' for v in corr_attrition.values]
@@ -413,8 +451,7 @@ print(corr_attrition.head(10).to_string())""")
 cells.append(md("### Boxplots : Variables numériques vs Attrition"))
 
 cells.append(
-    code("""# Top variables numériques les plus corrélées avec Attrition
-top_num = corr_attrition.head(8).index.tolist()
+    code("""top_num = corr_attrition.head(8).index.tolist()
 
 fig, axes = plt.subplots(2, 4, figsize=(20, 10))
 axes = axes.flatten()
@@ -439,11 +476,10 @@ cells.append(
     axes = axes.flatten()
 
     for i, col in enumerate(cat_cols):
-        # Taux d'attrition par catégorie
         attrition_rate = df.groupby(col)['Attrition'].mean().sort_values(ascending=False)
         attrition_rate.plot(kind='bar', ax=axes[i], color='coral', edgecolor='black')
-        axes[i].set_title(f'Taux d\\'attrition par {col}', fontsize=12)
-        axes[i].set_ylabel('Taux d\\'attrition')
+        axes[i].set_title(f"Taux d'attrition par {col}", fontsize=12)
+        axes[i].set_ylabel("Taux d'attrition")
         axes[i].tick_params(axis='x', rotation=45)
         axes[i].axhline(y=df['Attrition'].mean(), color='red', linestyle='--', alpha=0.5,
                         label=f'Moyenne = {df["Attrition"].mean():.2f}')
@@ -452,310 +488,190 @@ cells.append(
     for j in range(i + 1, len(axes)):
         axes[j].set_visible(False)
 
-    plt.suptitle('Taux d\\'attrition par variable catégorielle', fontsize=16, y=1.01)
+    plt.suptitle("Taux d'attrition par variable catégorielle", fontsize=16, y=1.01)
     plt.tight_layout()
     plt.show()""")
 )
 
+# --- MULTICOLLINEARITY ---
 cells.append(
-    md("""## 1.10 Synthèse EDA
+    md("""## 1.11 Détection et suppression de la multicolinéarité
+
+Deux features fortement corrélées entre elles apportent de l'information redondante. Cela peut :
+- Déstabiliser les coefficients (régression logistique, perceptron)
+- Augmenter le risque d'overfitting
+
+**Seuil choisi : |r| > 0.75**
+
+Ce seuil permet de supprimer les features qui partagent une part substantielle d'information :
+- **0.90+** : trop permissif, laisse passer des quasi-doublons
+- **0.75** : bon compromis, supprime les features qui partagent >56% de variance commune (r² > 0.56)
+- **0.50** : trop agressif, supprime des features avec des signaux distincts""")
+)
+
+cells.append(
+    code("""# Détection des paires fortement corrélées (|r| > 0.75)
+CORR_THRESHOLD = 0.75
+
+corr_abs = corr_matrix.abs()
+upper = corr_abs.where(np.triu(np.ones_like(corr_abs, dtype=bool), k=1))
+
+# Trouver les paires
+high_corr_pairs = []
+for col in upper.columns:
+    for idx in upper.index:
+        val = upper.loc[idx, col]
+        if pd.notna(val) and val > CORR_THRESHOLD and col != 'Attrition' and idx != 'Attrition':
+            high_corr_pairs.append((idx, col, corr_matrix.loc[idx, col]))
+
+if high_corr_pairs:
+    print(f"Paires avec |corrélation| > {CORR_THRESHOLD} :\\n")
+    for f1, f2, r in sorted(high_corr_pairs, key=lambda x: abs(x[2]), reverse=True):
+        print(f"  {f1:30s} ↔ {f2:30s}  r = {r:+.3f}")
+
+    # Stratégie : pour chaque paire, supprimer celle qui a la corrélation
+    # la plus faible (en absolu) avec Attrition
+    cols_to_remove = set()
+    for f1, f2, r in high_corr_pairs:
+        if f1 in cols_to_remove or f2 in cols_to_remove:
+            continue  # déjà marquée
+        corr_f1 = abs(corr_matrix.loc[f1, 'Attrition']) if f1 in corr_matrix.index else 0
+        corr_f2 = abs(corr_matrix.loc[f2, 'Attrition']) if f2 in corr_matrix.index else 0
+        to_drop = f1 if corr_f1 < corr_f2 else f2
+        cols_to_remove.add(to_drop)
+        print(f"\\n  → Suppression de '{to_drop}' (|corr avec Attrition| = "
+              f"{min(corr_f1, corr_f2):.4f} < {max(corr_f1, corr_f2):.4f})")
+
+    df = df.drop(columns=list(cols_to_remove))
+    print(f"\\nColonnes supprimées pour multicolinéarité : {list(cols_to_remove)}")
+    print(f"Dataset après suppression : {df.shape}")
+else:
+    print(f"Aucune paire avec |corrélation| > {CORR_THRESHOLD}")
+    print("Pas de suppression nécessaire.")""")
+)
+
+cells.append(
+    md("""## 1.12 Synthèse EDA
 
 **Observations clés** :
 - Le dataset est **déséquilibré** (~84% No vs ~16% Yes) → nécessite `class_weight='balanced'` en classification
-- Les variables les plus corrélées avec l'attrition sont typiquement : TotalWorkingYears, YearsAtCompany, Age, MonthlyIncome (négativement), et avg_work_hours
-- Les features issues de in_time/out_time apportent de l'information supplémentaire (heures travaillées, régularité)
-- Peu de valeurs manquantes dans l'ensemble
+- Les variables les plus corrélées avec l'attrition identifient des **leviers organisationnels** (satisfaction, carrière, rémunération)
+- Les features de surveillance (heures, absences) ont été exclues pour raisons éthiques
+- Les features fortement corrélées entre elles ont été réduites pour éviter la redondance
 
 ---""")
 )
 
-# =============================================================================
-# PART 2 : REGRESSION
-# =============================================================================
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║ PART 2 : CLASSIFICATION (LOOP OVER ETHICAL / NON-ETHICAL)                 ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
 cells.append(
-    md("""# Partie 2 : Régression
+    md("""# Partie 2 : Classification (boucle éthique vs non-éthique)
 
-> Inspiré du Workshop « Régression »
+On entraîne **les mêmes 8 classifieurs** sur deux versions du dataset :
+1. **Éthique** (`df`) : variables sensibles supprimées
+2. **Non-éthique** (`df_full`) : toutes les variables conservées
 
-**Objectif** : Prédire le **MonthlyIncome** des employés à partir de leurs caractéristiques.  
-On compare plusieurs approches : équation normale, statsmodels, sklearn (LinearRegression, DecisionTree, RandomForest, GradientBoosting, KNN, SVR).""")
+Le code est factorisé dans une boucle pour éviter la duplication. Chaque pipeline suit les mêmes étapes : préparation, entraînement, optimisation.""")
 )
 
-cells.append(md("## 2.1 Préparation des données pour la régression"))
+cells.append(md("## 2.1 Préparation des deux pipelines"))
 
 cells.append(
-    code("""from sklearn.model_selection import train_test_split, cross_val_score
+    code("""from sklearn.model_selection import train_test_split, cross_val_score, RandomizedSearchCV, StratifiedKFold
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 
-# Variable cible pour la régression
-target_reg = 'MonthlyIncome'
+# ─── Multicolinéarité sur df_full (df éthique déjà traité en §1.11) ───
+num_cols_full = df_full.select_dtypes(include=[np.number]).columns.tolist()
+corr_full = df_full[num_cols_full].corr()
+upper_full = corr_full.abs().where(np.triu(np.ones_like(corr_full, dtype=bool), k=1))
 
-# Séparer features et cible
-X_reg = df.drop(columns=[target_reg])
-y_reg = df[target_reg].copy()
+cols_to_remove_full = set()
+for col in upper_full.columns:
+    for idx in upper_full.index:
+        val = upper_full.loc[idx, col]
+        if pd.notna(val) and val > CORR_THRESHOLD and col != 'Attrition' and idx != 'Attrition':
+            if idx not in cols_to_remove_full and col not in cols_to_remove_full:
+                corr_f1 = abs(corr_full.loc[idx, 'Attrition'])
+                corr_f2 = abs(corr_full.loc[col, 'Attrition'])
+                to_drop = idx if corr_f1 < corr_f2 else col
+                cols_to_remove_full.add(to_drop)
 
-# Identifier les types de colonnes
-num_features = X_reg.select_dtypes(include=[np.number]).columns.tolist()
-cat_features = X_reg.select_dtypes(include=['object']).columns.tolist()
+if cols_to_remove_full:
+    df_full = df_full.drop(columns=list(cols_to_remove_full))
+    print(f"Colonnes supprimées du dataset complet (multicolinéarité) : {list(cols_to_remove_full)}")
+else:
+    print("Aucune suppression de multicolinéarité nécessaire sur df_full.")
 
-print(f"Features numériques ({len(num_features)}) : {num_features}")
-print(f"Features catégorielles ({len(cat_features)}) : {cat_features}")
-print(f"Cible : {target_reg}")
-print(f"Shape X: {X_reg.shape}, Shape y: {y_reg.shape}")""")
-)
-
-cells.append(
-    code("""# Pipelines de prétraitement
-numeric_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='median')),
-    ('scaler', StandardScaler())
-])
-
-categorical_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='most_frequent')),
-    ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
-])
-
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', numeric_transformer, num_features),
-        ('cat', categorical_transformer, cat_features)
-    ]
-)
-
-# Split train/test
-X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(
-    X_reg, y_reg, test_size=0.2, random_state=42
-)
-
-# Prétraiter
-X_train_processed = preprocessor.fit_transform(X_train_reg)
-X_test_processed = preprocessor.transform(X_test_reg)
-
-print(f"X_train transformé : {X_train_processed.shape}")
-print(f"X_test transformé  : {X_test_processed.shape}")""")
-)
-
-cells.append(
-    md("""## 2.2 Équation normale (OLS)
-
-La solution analytique de la régression linéaire : $\\hat{\\theta} = (X^T X)^{-1} X^T y$""")
-)
-
-cells.append(
-    code("""# Ajout du biais (colonne de 1)
-X_b_train = np.c_[np.ones((X_train_processed.shape[0], 1)), X_train_processed]
-X_b_test = np.c_[np.ones((X_test_processed.shape[0], 1)), X_test_processed]
-
-# Équation normale
-theta_best = np.linalg.pinv(X_b_train.T @ X_b_train) @ X_b_train.T @ y_train_reg.values
-
-# Prédictions
-y_pred_normal = X_b_test @ theta_best
-
-# Métriques
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
-
-mse_normal = mean_squared_error(y_test_reg, y_pred_normal)
-rmse_normal = np.sqrt(mse_normal)
-r2_normal = r2_score(y_test_reg, y_pred_normal)
-mae_normal = mean_absolute_error(y_test_reg, y_pred_normal)
-
-print("=== Équation Normale ===")
-print(f"MSE  : {mse_normal:,.0f}")
-print(f"RMSE : {rmse_normal:,.0f}")
-print(f"MAE  : {mae_normal:,.0f}")
-print(f"R²   : {r2_normal:.4f}")""")
-)
-
-cells.append(md("""## 2.3 Régression avec statsmodels"""))
-
-cells.append(
-    code("""import statsmodels.api as sm
-
-# Ajouter la constante
-X_sm = sm.add_constant(X_train_processed)
-model_sm = sm.OLS(y_train_reg.values, X_sm).fit()
-
-print(model_sm.summary())""")
-)
-
-cells.append(
-    code("""# Prédictions statsmodels
-X_sm_test = sm.add_constant(X_test_processed)
-y_pred_sm = model_sm.predict(X_sm_test)
-
-mse_sm = mean_squared_error(y_test_reg, y_pred_sm)
-r2_sm = r2_score(y_test_reg, y_pred_sm)
-print(f"\\nstatsmodels OLS : MSE: {mse_sm:,.0f} | R²: {r2_sm:.4f}")""")
-)
-
-cells.append(md("""## 2.4 sklearn : Comparaison de modèles de régression"""))
-
-cells.append(
-    code("""from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.svm import SVR
-import time
-
-# Dictionnaire des modèles
-reg_models = {
-    'LinearRegression': LinearRegression(),
-    'DecisionTree': DecisionTreeRegressor(random_state=42),
-    'RandomForest': RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1),
-    'GradientBoosting': GradientBoostingRegressor(n_estimators=100, random_state=42),
-    'KNN (k=5)': KNeighborsRegressor(n_neighbors=5),
-    'SVR (RBF)': SVR(kernel='rbf'),
+# ─── Définition des deux pipelines à comparer ───
+datasets = {
+    'Éthique': df,
+    'Non-éthique': df_full,
 }
 
-reg_results = {}
+target = 'Attrition'
+pipeline_data = {}
 
-for name, model in reg_models.items():
-    start = time.time()
-    model.fit(X_train_processed, y_train_reg)
-    train_time = time.time() - start
-    
-    y_pred_train = model.predict(X_train_processed)
-    y_pred_test = model.predict(X_test_processed)
-    
-    reg_results[name] = {
-        'MSE_train': mean_squared_error(y_train_reg, y_pred_train),
-        'MSE_test': mean_squared_error(y_test_reg, y_pred_test),
-        'RMSE_test': np.sqrt(mean_squared_error(y_test_reg, y_pred_test)),
-        'MAE_test': mean_absolute_error(y_test_reg, y_pred_test),
-        'R2_train': r2_score(y_train_reg, y_pred_train),
-        'R2_test': r2_score(y_test_reg, y_pred_test),
-        'Training_time': train_time
+for pipe_name, pipe_df in datasets.items():
+    X = pipe_df.drop(columns=[target])
+    y = pipe_df[target].copy()
+
+    num_feats = X.select_dtypes(include=[np.number]).columns.tolist()
+    cat_feats = X.select_dtypes(include=['object']).columns.tolist()
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', Pipeline([
+                ('imputer', SimpleImputer(strategy='median')),
+                ('scaler', StandardScaler())
+            ]), num_feats),
+            ('cat', Pipeline([
+                ('imputer', SimpleImputer(strategy='most_frequent')),
+                ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+            ]), cat_feats)
+        ]
+    )
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y
+    )
+
+    X_train_proc = preprocessor.fit_transform(X_train)
+    X_test_proc = preprocessor.transform(X_test)
+
+    # Noms des features après transformation (pour feature importance)
+    feat_names = (num_feats +
+                  list(preprocessor.named_transformers_['cat']
+                       .named_steps['encoder']
+                       .get_feature_names_out(cat_feats)))
+
+    pipeline_data[pipe_name] = {
+        'X': X, 'y': y,
+        'X_train': X_train_proc, 'X_test': X_test_proc,
+        'y_train': y_train, 'y_test': y_test,
+        'preprocessor': preprocessor,
+        'num_features': num_feats,
+        'cat_features': cat_feats,
+        'feature_names': feat_names,
     }
-    
-    print(f"{name:25s} | R² train: {reg_results[name]['R2_train']:.4f} | "
-          f"R² test: {reg_results[name]['R2_test']:.4f} | "
-          f"RMSE: {reg_results[name]['RMSE_test']:,.0f} | "
-          f"Time: {train_time:.3f}s")""")
+
+    print(f"\\n{'='*50}")
+    print(f" Pipeline : {pipe_name}")
+    print(f"{'='*50}")
+    print(f"  Features numériques   : {len(num_feats)}")
+    print(f"  Features catégorielles: {len(cat_feats)}")
+    print(f"  X_train: {X_train_proc.shape} | X_test: {X_test_proc.shape}")
+    print(f"  Distribution cible (train) : {dict(pd.Series(y_train).value_counts())}")
+
+extra_vars = sorted(set(pipeline_data['Non-éthique']['X'].columns) - set(pipeline_data['Éthique']['X'].columns))
+print(f"\\nVariables supplémentaires (non-éthique) : {extra_vars}")
+print(f"Delta features : +{len(extra_vars)} variables")""")
 )
 
-cells.append(md("## 2.5 Validation croisée"))
-
-cells.append(
-    code("""print("Validation croisée (5-fold) sur l'ensemble d'entraînement :\\n")
-
-cv_results = {}
-for name, model_class in [
-    ('LinearRegression', LinearRegression()),
-    ('DecisionTree', DecisionTreeRegressor(random_state=42)),
-    ('RandomForest', RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)),
-    ('GradientBoosting', GradientBoostingRegressor(n_estimators=100, random_state=42)),
-]:
-    scores = cross_val_score(model_class, X_train_processed, y_train_reg,
-                             cv=5, scoring='r2', n_jobs=-1)
-    cv_results[name] = scores
-    print(f"{name:25s} | R² moyen: {scores.mean():.4f} ± {scores.std():.4f} | "
-          f"Scores: [{', '.join(f'{s:.4f}' for s in scores)}]")""")
-)
-
-cells.append(md("## 2.6 Visualisation des résultats de régression"))
-
-cells.append(
-    code("""# Tableau comparatif
-reg_df = pd.DataFrame(reg_results).T
-reg_df = reg_df.sort_values('R2_test', ascending=False)
-
-print("\\n=== Tableau comparatif des modèles de régression ===\\n")
-print(reg_df[['R2_train', 'R2_test', 'RMSE_test', 'MAE_test', 'Training_time']].to_string())
-
-# Détection overfitting
-reg_df['Overfit_gap'] = reg_df['R2_train'] - reg_df['R2_test']
-print("\\n--- Détection d'overfitting ---")
-for idx, row in reg_df.iterrows():
-    status = "⚠️ OVERFITTING" if row['Overfit_gap'] > 0.1 else "✓ OK"
-    print(f"{idx:25s} | Gap R²: {row['Overfit_gap']:.4f} | {status}")""")
-)
-
-cells.append(
-    code("""# Graphique comparatif R²
-fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-
-# R² comparaison train vs test
-x = np.arange(len(reg_df))
-width = 0.35
-axes[0].bar(x - width/2, reg_df['R2_train'], width, label='Train', color='steelblue')
-axes[0].bar(x + width/2, reg_df['R2_test'], width, label='Test', color='coral')
-axes[0].set_xticks(x)
-axes[0].set_xticklabels(reg_df.index, rotation=45, ha='right')
-axes[0].set_ylabel('R²')
-axes[0].set_title('R² Train vs Test')
-axes[0].legend()
-axes[0].set_ylim(0, 1.05)
-
-# RMSE comparaison
-axes[1].barh(reg_df.index, reg_df['RMSE_test'], color='coral', edgecolor='black')
-axes[1].set_xlabel('RMSE')
-axes[1].set_title('RMSE sur le Test Set')
-
-plt.suptitle('Comparaison des modèles de régression (cible : MonthlyIncome)', fontsize=14)
-plt.tight_layout()
-plt.show()""")
-)
-
-cells.append(
-    code("""# Prédictions vs valeurs réelles (meilleur modèle)
-best_reg_name = reg_df.index[0]
-best_reg_model = reg_models[best_reg_name]
-y_pred_best = best_reg_model.predict(X_test_processed)
-
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-
-# Scatter plot
-axes[0].scatter(y_test_reg, y_pred_best, alpha=0.5, s=20, color='steelblue')
-axes[0].plot([y_test_reg.min(), y_test_reg.max()], [y_test_reg.min(), y_test_reg.max()],
-             'r--', linewidth=2, label='Prédiction parfaite')
-axes[0].set_xlabel('Valeurs réelles')
-axes[0].set_ylabel('Prédictions')
-axes[0].set_title(f'{best_reg_name} : Prédictions vs Réel')
-axes[0].legend()
-
-# Résidus
-residuals = y_test_reg.values - y_pred_best
-axes[1].scatter(y_pred_best, residuals, alpha=0.5, s=20, color='coral')
-axes[1].axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-axes[1].set_xlabel('Prédictions')
-axes[1].set_ylabel('Résidus')
-axes[1].set_title(f'{best_reg_name} : Résidus')
-
-plt.tight_layout()
-plt.show()""")
-)
-
-cells.append(
-    md("""## 2.7 Synthèse Régression
-
-**Observations** :
-- La régression linéaire fournit un baseline solide pour prédire le MonthlyIncome
-- Les modèles ensemblistes (RandomForest, GradientBoosting) offrent généralement de meilleures performances
-- Le DecisionTree tend à overfitter (R² train ≈ 1.0 vs R² test plus bas)
-- La validation croisée confirme la stabilité des modèles
-
----""")
-)
-
-# =============================================================================
-# PART 3 : CLASSIFICATION
-# =============================================================================
-cells.append(
-    md("""# Partie 3 : Classification
-
-> Inspiré du Workshop « Classification »
-
-**Objectif** : Prédire le départ des employés (`Attrition` : 0/1).  
-On compare 8 classifieurs avec gestion du déséquilibre de classes.""")
-)
-
-cells.append(md("## 3.1 Préparation des données pour la classification"))
+cells.append(md("## 2.2 Fonctions utilitaires et classifieurs"))
 
 cells.append(
     code("""from sklearn.linear_model import LogisticRegression, Perceptron
@@ -763,158 +679,500 @@ from sklearn.svm import SVC
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                              f1_score, roc_auc_score, classification_report,
                              confusion_matrix, ConfusionMatrixDisplay,
                              roc_curve, precision_recall_curve, average_precision_score)
 
-# Variable cible pour la classification
-target_clf = 'Attrition'
 
-X_clf = df.drop(columns=[target_clf])
-y_clf = df[target_clf].copy()
+def get_classifiers():
+    \"\"\"Retourne un dictionnaire frais de 8 classifieurs (mêmes hyperparamètres).\"\"\"
+    return {
+        'Logistic Regression': LogisticRegression(
+            max_iter=1000, class_weight='balanced', random_state=RANDOM_STATE),
+        'Perceptron': Perceptron(
+            max_iter=1000, class_weight='balanced', random_state=RANDOM_STATE),
+        'SVM (RBF)': SVC(
+            kernel='rbf', class_weight='balanced', probability=True, random_state=RANDOM_STATE),
+        'Naive Bayes': GaussianNB(),
+        'KNN (k=5)': KNeighborsClassifier(n_neighbors=5),
+        'Decision Tree': DecisionTreeClassifier(
+            max_depth=10, class_weight='balanced', random_state=RANDOM_STATE),
+        'Random Forest': RandomForestClassifier(
+            n_estimators=200, class_weight='balanced', random_state=RANDOM_STATE, n_jobs=-1),
+        'MLP (Neural Network)': MLPClassifier(
+            hidden_layer_sizes=(128, 64), max_iter=500, random_state=RANDOM_STATE,
+            early_stopping=True, validation_fraction=0.15),
+    }
 
-# Identifier colonnes
-num_features_clf = X_clf.select_dtypes(include=[np.number]).columns.tolist()
-cat_features_clf = X_clf.select_dtypes(include=['object']).columns.tolist()
 
-# Preprocesseur
-preprocessor_clf = ColumnTransformer(
-    transformers=[
-        ('num', Pipeline([
-            ('imputer', SimpleImputer(strategy='median')),
-            ('scaler', StandardScaler())
-        ]), num_features_clf),
-        ('cat', Pipeline([
-            ('imputer', SimpleImputer(strategy='most_frequent')),
-            ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
-        ]), cat_features_clf)
-    ]
+def train_and_evaluate(classifiers_dict, X_train, X_test, y_train, y_test):
+    \"\"\"Entraîne tous les classifieurs et retourne un dictionnaire de résultats.\"\"\"
+    results = {}
+    for name, clf in classifiers_dict.items():
+        start = time.time()
+        clf.fit(X_train, y_train)
+        train_time = time.time() - start
+
+        y_pred = clf.predict(X_test)
+
+        if hasattr(clf, 'predict_proba'):
+            y_proba = clf.predict_proba(X_test)[:, 1]
+            auc = roc_auc_score(y_test, y_proba)
+        elif hasattr(clf, 'decision_function'):
+            y_scores = clf.decision_function(X_test)
+            auc = roc_auc_score(y_test, y_scores)
+        else:
+            auc = np.nan
+
+        results[name] = {
+            'Accuracy': accuracy_score(y_test, y_pred),
+            'Precision': precision_score(y_test, y_pred, zero_division=0),
+            'Recall': recall_score(y_test, y_pred, zero_division=0),
+            'F1': f1_score(y_test, y_pred, zero_division=0),
+            'AUC-ROC': auc,
+            'Training_time': train_time,
+            'y_pred': y_pred,
+        }
+
+        auc_str = f"{auc:.4f}" if not np.isnan(auc) else "N/A"
+        print(f"  {name:25s} | Acc: {results[name]['Accuracy']:.4f} | "
+              f"Prec: {results[name]['Precision']:.4f} | "
+              f"Rec: {results[name]['Recall']:.4f} | "
+              f"F1: {results[name]['F1']:.4f} | "
+              f"AUC: {auc_str}")
+    return results
+
+
+def results_to_df(results):
+    \"\"\"Convertit un dict de résultats en DataFrame (sans y_pred).\"\"\"
+    return pd.DataFrame({
+        name: {k: v for k, v in m.items() if k != 'y_pred'}
+        for name, m in results.items()
+    }).T
+
+
+print("Fonctions et classifieurs définis ✓")""")
 )
 
-# Split stratifié
-X_train_clf, X_test_clf, y_train_clf, y_test_clf = train_test_split(
-    X_clf, y_clf, test_size=0.2, random_state=42, stratify=y_clf
-)
-
-# Prétraiter
-X_train_clf_proc = preprocessor_clf.fit_transform(X_train_clf)
-X_test_clf_proc = preprocessor_clf.transform(X_test_clf)
-
-print(f"Distribution cible (train) : {dict(pd.Series(y_train_clf).value_counts())}")
-print(f"Distribution cible (test)  : {dict(pd.Series(y_test_clf).value_counts())}")
-print(f"X_train: {X_train_clf_proc.shape} | X_test: {X_test_clf_proc.shape}")""")
-)
-
-cells.append(md("## 3.2 Entraînement des classifieurs"))
+cells.append(md("## 2.3 Entraînement des 8 classifieurs (boucle)"))
 
 cells.append(
-    code("""# Dictionnaire des classifieurs
-classifiers = {
-    'Logistic Regression': LogisticRegression(
-        max_iter=1000, class_weight='balanced', random_state=42),
-    'Perceptron': Perceptron(
-        max_iter=1000, random_state=42),
-    'SVM (RBF)': SVC(
-        kernel='rbf', class_weight='balanced', probability=True, random_state=42),
-    'Naive Bayes': GaussianNB(),
-    'KNN (k=5)': KNeighborsClassifier(n_neighbors=5),
-    'Decision Tree': DecisionTreeClassifier(
-        class_weight='balanced', random_state=42),
-    'Random Forest': RandomForestClassifier(
-        n_estimators=100, class_weight='balanced', random_state=42, n_jobs=-1),
-    'Gradient Boosting': GradientBoostingClassifier(
-        n_estimators=100, random_state=42),
+    code("""all_results = {}
+all_classifiers = {}
+
+for pipe_name in datasets:
+    d = pipeline_data[pipe_name]
+    classifiers = get_classifiers()
+
+    print(f"\\n{'='*60}")
+    print(f" Entraînement : {pipe_name}")
+    print(f"{'='*60}\\n")
+
+    results = train_and_evaluate(
+        classifiers, d['X_train'], d['X_test'], d['y_train'], d['y_test']
+    )
+
+    all_results[pipe_name] = results
+    all_classifiers[pipe_name] = classifiers""")
+)
+
+cells.append(md("## 2.4 Rapports de classification détaillés"))
+
+cells.append(
+    code("""for pipe_name in datasets:
+    d = pipeline_data[pipe_name]
+    results = all_results[pipe_name]
+
+    print(f"\\n{'#'*60}")
+    print(f" Rapports : {pipe_name}")
+    print(f"{'#'*60}")
+
+    for name in results:
+        print(f"\\n{'='*50}")
+        print(f" {name}")
+        print(f"{'='*50}")
+        print(classification_report(d['y_test'], results[name]['y_pred'],
+                                    target_names=['No (0)', 'Yes (1)']))""")
+)
+
+cells.append(
+    md("""## 2.5 Optimisation des hyperparamètres (boucle)
+
+Pour chaque pipeline, on optimise les **3 meilleurs modèles** via **RandomizedSearchCV**.
+La métrique d'optimisation est le **F1-Score** (compromis Precision / Recall sur la classe minoritaire).""")
+)
+
+cells.append(
+    code("""from scipy.stats import randint, uniform
+
+# Espaces de recherche pour les modèles optimisables
+param_distributions = {
+    'Logistic Regression': {
+        'C': uniform(0.01, 10),
+        'penalty': ['l1', 'l2'],
+        'solver': ['liblinear', 'saga'],
+    },
+    'Random Forest': {
+        'n_estimators': randint(50, 300),
+        'max_depth': [None, 10, 20, 30],
+        'min_samples_split': randint(2, 20),
+        'min_samples_leaf': randint(1, 10),
+        'max_features': ['sqrt', 'log2', None],
+    },
+    'MLP (Neural Network)': {
+        'hidden_layer_sizes': [(64,), (128, 64), (128, 64, 32), (256, 128)],
+        'alpha': uniform(0.0001, 0.01),
+        'learning_rate_init': uniform(0.0005, 0.01),
+        'batch_size': [32, 64, 128],
+    },
+    'SVM (RBF)': {
+        'C': uniform(0.1, 10),
+        'gamma': ['scale', 'auto'] + list(uniform(0.001, 0.1).rvs(5, random_state=RANDOM_STATE)),
+    },
+    'Decision Tree': {
+        'max_depth': [5, 10, 15, 20, 30, None],
+        'min_samples_split': randint(2, 20),
+        'min_samples_leaf': randint(1, 10),
+        'criterion': ['gini', 'entropy'],
+    },
+    'KNN (k=5)': {
+        'n_neighbors': [3, 5, 7, 9, 11, 15],
+        'weights': ['uniform', 'distance'],
+        'metric': ['minkowski', 'euclidean', 'manhattan'],
+    },
 }
 
-clf_results = {}
+# Factories pour recréer des modèles vierges
+base_model_factories = {
+    'Logistic Regression': lambda: LogisticRegression(
+        max_iter=1000, class_weight='balanced', random_state=RANDOM_STATE),
+    'Random Forest': lambda: RandomForestClassifier(
+        class_weight='balanced', random_state=RANDOM_STATE, n_jobs=-1),
+    'MLP (Neural Network)': lambda: MLPClassifier(
+        max_iter=500, random_state=RANDOM_STATE, early_stopping=True),
+    'SVM (RBF)': lambda: SVC(
+        kernel='rbf', class_weight='balanced', probability=True, random_state=RANDOM_STATE),
+    'Decision Tree': lambda: DecisionTreeClassifier(
+        class_weight='balanced', random_state=RANDOM_STATE),
+    'KNN (k=5)': lambda: KNeighborsClassifier(),
+}
 
-for name, clf in classifiers.items():
-    start = time.time()
-    clf.fit(X_train_clf_proc, y_train_clf)
-    train_time = time.time() - start
-    
-    y_pred = clf.predict(X_test_clf_proc)
-    
-    # Probabilités (si disponibles)
-    if hasattr(clf, 'predict_proba'):
-        y_proba = clf.predict_proba(X_test_clf_proc)[:, 1]
-        auc = roc_auc_score(y_test_clf, y_proba)
-    elif hasattr(clf, 'decision_function'):
-        y_scores = clf.decision_function(X_test_clf_proc)
-        auc = roc_auc_score(y_test_clf, y_scores)
-    else:
-        auc = np.nan
-        y_proba = None
-    
-    clf_results[name] = {
-        'Accuracy': accuracy_score(y_test_clf, y_pred),
-        'Precision': precision_score(y_test_clf, y_pred, zero_division=0),
-        'Recall': recall_score(y_test_clf, y_pred, zero_division=0),
-        'F1': f1_score(y_test_clf, y_pred, zero_division=0),
-        'AUC-ROC': auc,
-        'Training_time': train_time,
-        'y_pred': y_pred,
-    }
-    
-    print(f"{name:25s} | Acc: {clf_results[name]['Accuracy']:.4f} | "
-          f"Prec: {clf_results[name]['Precision']:.4f} | "
-          f"Rec: {clf_results[name]['Recall']:.4f} | "
-          f"F1: {clf_results[name]['F1']:.4f} | "
-          f"AUC: {clf_results[name]['AUC-ROC']:.4f}" if not np.isnan(auc) else
-          f"{name:25s} | Acc: {clf_results[name]['Accuracy']:.4f} | "
-          f"Prec: {clf_results[name]['Precision']:.4f} | "
-          f"Rec: {clf_results[name]['Recall']:.4f} | "
-          f"F1: {clf_results[name]['F1']:.4f} | "
-          f"AUC: N/A")""")
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+
+for pipe_name in datasets:
+    d = pipeline_data[pipe_name]
+    results = all_results[pipe_name]
+    classifiers = all_classifiers[pipe_name]
+
+    print(f"\\n{'#'*60}")
+    print(f" Optimisation : {pipe_name}")
+    print(f"{'#'*60}")
+
+    ranking = results_to_df(results).sort_values('F1', ascending=False)
+    top_models = [name for name in ranking.index[:3]
+                  if name in param_distributions and name in base_model_factories]
+    print(f"\\nModèles sélectionnés : {top_models}")
+
+    for name in top_models:
+        print(f"\\n{'='*50}")
+        print(f"  {name}")
+        print(f"{'='*50}")
+
+        search = RandomizedSearchCV(
+            base_model_factories[name](),
+            param_distributions[name],
+            n_iter=30,
+            cv=cv,
+            scoring='f1',
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+            verbose=0
+        )
+        search.fit(d['X_train'], d['y_train'])
+
+        print(f"  Meilleurs paramètres : {search.best_params_}")
+        print(f"  Meilleur F1 (CV)     : {search.best_score_:.4f}")
+
+        y_pred_opt = search.best_estimator_.predict(d['X_test'])
+        f1_before = results[name]['F1']
+        f1_after = f1_score(d['y_test'], y_pred_opt)
+        recall_after = recall_score(d['y_test'], y_pred_opt)
+
+        print(f"  F1 avant : {f1_before:.4f} | F1 après : {f1_after:.4f} "
+              f"({'↑' if f1_after > f1_before else '↓'} {abs(f1_after-f1_before):.4f})")
+
+        # Toujours mettre à jour : le score CV (moyenne 5 folds) est
+        # plus fiable qu'un seul test split.
+        if hasattr(search.best_estimator_, 'predict_proba'):
+            y_proba_opt = search.best_estimator_.predict_proba(d['X_test'])[:, 1]
+            auc_opt = roc_auc_score(d['y_test'], y_proba_opt)
+        elif hasattr(search.best_estimator_, 'decision_function'):
+            auc_opt = roc_auc_score(
+                d['y_test'], search.best_estimator_.decision_function(d['X_test']))
+        else:
+            auc_opt = np.nan
+
+        results[name] = {
+            'Accuracy': accuracy_score(d['y_test'], y_pred_opt),
+            'Precision': precision_score(d['y_test'], y_pred_opt, zero_division=0),
+            'Recall': recall_after,
+            'F1': f1_after,
+            'AUC-ROC': auc_opt,
+            'Training_time': results[name]['Training_time'],
+            'y_pred': y_pred_opt,
+        }
+        classifiers[name] = search.best_estimator_
+        delta = f1_after - f1_before
+        print(f"  ✓ Modèle mis à jour (delta F1 : {delta:+.4f}, CV F1 : {search.best_score_:.4f})")""")
 )
 
-cells.append(md("## 3.3 Rapports de classification détaillés"))
+cells.append(md("## 2.6 Résultats côte à côte"))
 
 cells.append(
-    code("""for name in classifiers:
-    print(f"\\n{'='*60}")
-    print(f" {name}")
-    print(f"{'='*60}")
-    print(classification_report(y_test_clf, clf_results[name]['y_pred'],
-                                target_names=['No (0)', 'Yes (1)']))""")
+    code("""print("\\n" + "="*80)
+print(" RÉSULTATS COMPARATIFS (après optimisation)")
+print("="*80)
+
+for pipe_name in datasets:
+    df_res = results_to_df(all_results[pipe_name]).sort_values('F1', ascending=False)
+    print(f"\\n--- {pipe_name} ---\\n")
+    print(df_res[['Accuracy', 'Precision', 'Recall', 'F1', 'AUC-ROC']]
+          .to_string(float_format=lambda x: f'{x:.4f}'))
+    print(f"\\n🏆 Meilleur F1 : {df_res.index[0]} ({df_res['F1'].iloc[0]:.4f})")""")
 )
 
-# =============================================================================
-# PART 4 : COMPARATIVE ANALYSIS
-# =============================================================================
-cells.append(md("""# Partie 4 : Analyse Comparative et Recommandations"""))
-
-cells.append(md("## 4.1 Tableau comparatif global"))
-
 cells.append(
-    code("""# Créer le DataFrame de résultats (sans y_pred)
-results_display = {name: {k: v for k, v in m.items() if k != 'y_pred'}
-                   for name, m in clf_results.items()}
-clf_df = pd.DataFrame(results_display).T
-clf_df = clf_df.sort_values('F1', ascending=False)
+    md("""## 2.7 Analyse approfondie du meilleur modèle (pipeline éthique)
 
-# Affichage formaté
-print("=== Tableau comparatif des classifieurs ===\\n")
-display_cols = ['Accuracy', 'Precision', 'Recall', 'F1', 'AUC-ROC', 'Training_time']
-print(clf_df[display_cols].to_string(float_format=lambda x: f'{x:.4f}'))
-
-print(f"\\n🏆 Meilleur F1-Score : {clf_df.index[0]} ({clf_df['F1'].iloc[0]:.4f})")""")
+On détaille le fonctionnement, les forces et les limites du modèle le plus performant sur la pipeline éthique — celle qui serait déployée en production.""")
 )
 
-cells.append(md("## 4.2 Matrices de confusion"))
+cells.append(
+    code("""# Identifier le meilleur modèle éthique (par F1)
+ranking_eth = results_to_df(all_results['Éthique']).sort_values('F1', ascending=False)
+
+best_name = ranking_eth.index[0]
+best_model = all_classifiers['Éthique'][best_name]
+best_metrics = all_results['Éthique'][best_name]
+
+print(f"🏆 Meilleur modèle (éthique) : {best_name}")
+print(f"\\nMétriques sur le test set :")
+for k, v in best_metrics.items():
+    if k != 'y_pred':
+        print(f"  {k:15s} : {v:.4f}" if isinstance(v, float) else f"  {k:15s} : {v}")""")
+)
 
 cells.append(
-    code("""n_models = len(classifiers)
+    code("""# --- Description du fonctionnement du meilleur modèle ---
+
+model_descriptions = {
+    'Logistic Regression': \"\"\"
+### Régression Logistique
+**Principe** : Modèle linéaire qui estime P(Attrition=1|X) via la fonction sigmoïde σ(z) = 1/(1+e^{-z}).
+- **Avantages** : Interprétable (coefficients = importance des features), rapide, robuste avec class_weight='balanced'
+- **Limites** : Suppose une relation linéaire entre features et log-odds ; sensible à la multicolinéarité
+- **Paramètres clés** : C (régularisation), penalty (L1/L2)\"\"\",
+
+    'Random Forest': \"\"\"
+### Random Forest
+**Principe** : Ensemble de N arbres de décision entraînés sur des sous-échantillons bootstrap, avec vote majoritaire.
+- **Avantages** : Résistant à l'overfitting (bagging), gère les non-linéarités, fournit l'importance des features
+- **Limites** : Moins interprétable qu'un arbre unique, coûteux en mémoire
+- **Paramètres clés** : n_estimators, max_depth, min_samples_split, class_weight\"\"\",
+
+    'MLP (Neural Network)': \"\"\"
+### Réseau de Neurones (MLP — Multi-Layer Perceptron)
+**Principe** : Réseau de neurones à couches denses (fully connected). Chaque neurone calcule z = W·x + b puis applique une activation (ReLU).
+La rétropropagation ajuste les poids pour minimiser la cross-entropy loss.
+- **Architecture** : Couche d'entrée → 128 neurones (ReLU) → 64 neurones (ReLU) → Sortie (Sigmoïde)
+- **Avantages** : Capture les interactions complexes et non-linéaires entre features
+- **Limites** : Boîte noire (peu interprétable), sensible aux hyperparamètres et au scaling
+- **Paramètres clés** : hidden_layer_sizes, learning_rate, alpha (régularisation L2), batch_size
+- **Différence avec le Perceptron** : le Perceptron est un réseau à une seule couche sans activation non-linéaire,
+  limité aux frontières de décision linéaires. Le MLP empile plusieurs couches avec des activations non-linéaires,
+  ce qui lui permet de modéliser des relations arbitrairement complexes (théorème d'approximation universelle).\"\"\",
+
+    'SVM (RBF)': \"\"\"
+### SVM (Support Vector Machine) avec noyau RBF
+**Principe** : Trouve l'hyperplan de marge maximale dans un espace de haute dimension (kernel trick RBF : K(x,x') = exp(-γ||x-x'||²)).
+- **Avantages** : Efficace en haute dimension, robuste grâce à la régularisation C
+- **Limites** : Coûteux en O(n²) à O(n³), peu interprétable, sensible au scaling
+- **Paramètres clés** : C (régularisation), gamma (largeur du noyau)\"\"\",
+
+    'KNN (k=5)': \"\"\"
+### K-Nearest Neighbors
+**Principe** : Classe un point selon le vote majoritaire de ses k plus proches voisins dans l'espace des features.
+- **Avantages** : Simple, non-paramétrique, pas d'entraînement
+- **Limites** : Lent à prédire (O(n) par sample), sensible à la dimension et au scaling
+- **Paramètres clés** : n_neighbors (k), metric (distance)\"\"\",
+
+    'Decision Tree': \"\"\"
+### Arbre de Décision
+**Principe** : Suite de questions binaires (splits) sur les features, minimisant l'impureté de Gini à chaque nœud.
+- **Avantages** : Très interprétable (visualisable), gère les non-linéarités
+- **Limites** : Très sensible à l'overfitting sans pruning, instable (haute variance)
+- **Paramètres clés** : max_depth, min_samples_split, class_weight\"\"\",
+
+    'Naive Bayes': \"\"\"
+### Naive Bayes (Gaussien)
+**Principe** : Applique le théorème de Bayes avec l'hypothèse (naïve) d'indépendance conditionnelle des features.
+- **Avantages** : Très rapide, bon baseline, fonctionne bien en haute dimension
+- **Limites** : L'hypothèse d'indépendance est rarement vraie, performances souvent inférieures
+- **Paramètres clés** : var_smoothing\"\"\",
+
+    'Perceptron': \"\"\"
+### Perceptron
+**Principe** : Classifieur linéaire à seuil, ancêtre des réseaux de neurones. Mise à jour des poids par la règle du perceptron.
+- **Avantages** : Très rapide, simple
+- **Limites** : Limité aux problèmes linéairement séparables, pas de probabilités
+- **Paramètres clés** : max_iter, eta0 (learning rate)\"\"\",
+}
+
+desc = model_descriptions.get(best_name, f"Pas de description détaillée pour {best_name}.")
+print(desc)""")
+)
+
+cells.append(
+    code("""# Validation croisée du meilleur modèle éthique
+d_eth = pipeline_data['Éthique']
+feature_names_eth = d_eth['feature_names']
+
+cv_scores = cross_val_score(best_model, d_eth['X_train'], d_eth['y_train'],
+                            cv=5, scoring='f1', n_jobs=-1)
+print(f"Validation croisée 5-fold ({best_name}) :")
+print(f"  F1 moyen : {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
+print(f"  Scores   : [{', '.join(f'{s:.4f}' for s in cv_scores)}]")
+
+# Si le modèle a feature_importances_ (tree-based)
+if hasattr(best_model, 'feature_importances_'):
+    importances = best_model.feature_importances_
+    indices = np.argsort(importances)[-15:]
+
+    plt.figure(figsize=(10, 8))
+    plt.barh(range(len(indices)), importances[indices], color='steelblue', edgecolor='black')
+    plt.yticks(range(len(indices)), [feature_names_eth[i] for i in indices])
+    plt.xlabel('Importance')
+    plt.title(f'{best_name} : Top 15 Features les plus importantes')
+    plt.tight_layout()
+    plt.show()
+
+elif hasattr(best_model, 'coef_'):
+    coefs = best_model.coef_.flatten()
+    indices = np.argsort(np.abs(coefs))[-15:]
+
+    plt.figure(figsize=(10, 8))
+    colors_coef = ['#e74c3c' if c > 0 else '#3498db' for c in coefs[indices]]
+    plt.barh(range(len(indices)), coefs[indices], color=colors_coef, edgecolor='black')
+    plt.yticks(range(len(indices)), [feature_names_eth[i] for i in indices])
+    plt.xlabel('Coefficient')
+    plt.title(f'{best_name} : Top 15 Coefficients (rouge = augmente Attrition)')
+    plt.tight_layout()
+    plt.show()
+
+else:
+    print("Ce modèle ne fournit pas directement l'importance des features.")""")
+)
+
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║ PART 3 : COMPARATIVE ANALYSIS                                             ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+cells.append(md("# Partie 3 : Analyse Comparative et Recommandations"))
+
+cells.append(md("## 3.1 Tableau comparatif : éthique vs non-éthique"))
+
+cells.append(
+    code("""df_eth = results_to_df(all_results['Éthique']).sort_values('F1', ascending=False)
+df_noeth = results_to_df(all_results['Non-éthique']).sort_values('F1', ascending=False)
+
+print("=== AVEC filtre éthique ===\\n")
+print(df_eth[['Accuracy', 'Precision', 'Recall', 'F1', 'AUC-ROC']].to_string(float_format=lambda x: f'{x:.4f}'))
+
+print(f"\\n\\n=== SANS filtre éthique ===\\n")
+print(df_noeth[['Accuracy', 'Precision', 'Recall', 'F1', 'AUC-ROC']].to_string(float_format=lambda x: f'{x:.4f}'))
+
+print(f"\\n\\n🏆 Meilleur F1 éthique    : {df_eth.index[0]} ({df_eth['F1'].iloc[0]:.4f})")
+print(f"🏆 Meilleur F1 non-éthique : {df_noeth.index[0]} ({df_noeth['F1'].iloc[0]:.4f})")""")
+)
+
+cells.append(md("## 3.2 Impact du filtre éthique par modèle"))
+
+cells.append(
+    code("""# Comparaison côte à côte
+comparison = pd.DataFrame({
+    'F1_ethique': df_eth['F1'],
+    'F1_non_ethique': df_noeth.reindex(df_eth.index)['F1'],
+    'Recall_ethique': df_eth['Recall'],
+    'Recall_non_ethique': df_noeth.reindex(df_eth.index)['Recall'],
+    'AUC_ethique': df_eth['AUC-ROC'],
+    'AUC_non_ethique': df_noeth.reindex(df_eth.index)['AUC-ROC'],
+})
+comparison['Delta_F1'] = comparison['F1_non_ethique'] - comparison['F1_ethique']
+comparison['Delta_Recall'] = comparison['Recall_non_ethique'] - comparison['Recall_ethique']
+
+print("=== Impact du filtre éthique ===\\n")
+print(comparison.to_string(float_format=lambda x: f'{x:.4f}'))
+
+print(f"\\nDelta F1 moyen : {comparison['Delta_F1'].mean():+.4f}")
+print(f"Delta Recall moyen : {comparison['Delta_Recall'].mean():+.4f}")
+
+mean_delta = comparison['Delta_F1'].mean()
+if abs(mean_delta) < 0.02:
+    print("\\n→ L'impact du filtre éthique est NÉGLIGEABLE (<2 pts de F1)")
+elif mean_delta > 0:
+    print(f"\\n→ Les variables sensibles AMÉLIORENT les performances (+{mean_delta:.1%})")
+    print("  Mais leur usage est éthiquement inacceptable.")
+else:
+    print(f"\\n→ Le filtre éthique AMÉLIORE légèrement les performances ({mean_delta:+.1%})")
+    print("  Les variables sensibles apportaient du bruit.")""")
+)
+
+cells.append(md("## 3.3 Graphiques comparatifs"))
+
+cells.append(
+    code("""fig, axes = plt.subplots(1, 3, figsize=(20, 7))
+
+for ax, metric, color_e, color_n in zip(
+    axes,
+    ['F1', 'Recall', 'AUC-ROC'],
+    ['#2ecc71', '#3498db', '#9b59b6'],
+    ['#e74c3c', '#e67e22', '#e74c3c']
+):
+    models = df_eth.index
+    x = np.arange(len(models))
+    width = 0.35
+
+    vals_eth = df_eth.loc[models, metric]
+    vals_noeth = df_noeth.reindex(models)[metric]
+
+    ax.barh(x - width/2, vals_eth, width, label='Éthique', color=color_e, edgecolor='black')
+    ax.barh(x + width/2, vals_noeth, width, label='Sans filtre', color=color_n, edgecolor='black', alpha=0.7)
+    ax.set_yticks(x)
+    ax.set_yticklabels(models, fontsize=9)
+    ax.set_xlabel(metric)
+    ax.set_title(metric, fontsize=14)
+    ax.legend()
+
+plt.suptitle('Comparaison éthique vs non-éthique', fontsize=16, y=1.02)
+plt.tight_layout()
+plt.show()""")
+)
+
+cells.append(md("## 3.4 Matrices de confusion (pipeline éthique)"))
+
+cells.append(
+    code("""d_eth = pipeline_data['Éthique']
+n_models = len(all_classifiers['Éthique'])
 n_cols_cm = 4
 n_rows_cm = (n_models + n_cols_cm - 1) // n_cols_cm
 
 fig, axes = plt.subplots(n_rows_cm, n_cols_cm, figsize=(20, 5 * n_rows_cm))
 axes = axes.flatten()
 
-for i, (name, clf) in enumerate(classifiers.items()):
-    cm = confusion_matrix(y_test_clf, clf_results[name]['y_pred'])
+for i, (name, clf) in enumerate(all_classifiers['Éthique'].items()):
+    cm = confusion_matrix(d_eth['y_test'], all_results['Éthique'][name]['y_pred'])
     disp = ConfusionMatrixDisplay(cm, display_labels=['No', 'Yes'])
     disp.plot(ax=axes[i], cmap='Blues', colorbar=False)
     axes[i].set_title(name, fontsize=11)
@@ -922,119 +1180,117 @@ for i, (name, clf) in enumerate(classifiers.items()):
 for j in range(i + 1, len(axes)):
     axes[j].set_visible(False)
 
-plt.suptitle('Matrices de confusion : Tous les classifieurs', fontsize=16, y=1.02)
+plt.suptitle('Matrices de confusion : Pipeline éthique', fontsize=16, y=1.02)
 plt.tight_layout()
 plt.show()""")
 )
 
-cells.append(md("## 4.3 Courbes ROC"))
+cells.append(md("## 3.5 Courbes ROC (pipeline éthique)"))
 
 cells.append(
     code("""plt.figure(figsize=(10, 8))
 
-for name, clf in classifiers.items():
+for name, clf in all_classifiers['Éthique'].items():
     if hasattr(clf, 'predict_proba'):
-        y_proba = clf.predict_proba(X_test_clf_proc)[:, 1]
+        y_proba = clf.predict_proba(d_eth['X_test'])[:, 1]
     elif hasattr(clf, 'decision_function'):
-        y_proba = clf.decision_function(X_test_clf_proc)
+        y_proba = clf.decision_function(d_eth['X_test'])
     else:
         continue
-    
-    fpr, tpr, _ = roc_curve(y_test_clf, y_proba)
-    auc_val = roc_auc_score(y_test_clf, y_proba)
+
+    fpr, tpr, _ = roc_curve(d_eth['y_test'], y_proba)
+    auc_val = roc_auc_score(d_eth['y_test'], y_proba)
     plt.plot(fpr, tpr, label=f'{name} (AUC={auc_val:.3f})', linewidth=2)
 
 plt.plot([0, 1], [0, 1], 'k--', linewidth=1, label='Random (AUC=0.500)')
 plt.xlabel('Taux de faux positifs (FPR)', fontsize=12)
 plt.ylabel('Taux de vrais positifs (TPR)', fontsize=12)
-plt.title('Courbes ROC : Comparaison des classifieurs', fontsize=14)
+plt.title('Courbes ROC : Pipeline éthique', fontsize=14)
 plt.legend(loc='lower right', fontsize=10)
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()""")
 )
 
-cells.append(md("## 4.4 Courbes Precision-Recall"))
+cells.append(md("## 3.6 Courbes Precision-Recall (pipeline éthique)"))
 
 cells.append(
     code("""plt.figure(figsize=(10, 8))
 
-for name, clf in classifiers.items():
+for name, clf in all_classifiers['Éthique'].items():
     if hasattr(clf, 'predict_proba'):
-        y_proba = clf.predict_proba(X_test_clf_proc)[:, 1]
+        y_proba = clf.predict_proba(d_eth['X_test'])[:, 1]
     elif hasattr(clf, 'decision_function'):
-        y_proba = clf.decision_function(X_test_clf_proc)
+        y_proba = clf.decision_function(d_eth['X_test'])
     else:
         continue
-    
-    precision_vals, recall_vals, _ = precision_recall_curve(y_test_clf, y_proba)
-    ap = average_precision_score(y_test_clf, y_proba)
+
+    precision_vals, recall_vals, _ = precision_recall_curve(d_eth['y_test'], y_proba)
+    ap = average_precision_score(d_eth['y_test'], y_proba)
     plt.plot(recall_vals, precision_vals, label=f'{name} (AP={ap:.3f})', linewidth=2)
 
-baseline = y_test_clf.mean()
+baseline = d_eth['y_test'].mean()
 plt.axhline(y=baseline, color='gray', linestyle='--', label=f'Baseline ({baseline:.3f})')
 plt.xlabel('Recall', fontsize=12)
 plt.ylabel('Precision', fontsize=12)
-plt.title('Courbes Precision-Recall : Comparaison des classifieurs', fontsize=14)
+plt.title('Courbes Precision-Recall : Pipeline éthique', fontsize=14)
 plt.legend(loc='upper right', fontsize=10)
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()""")
 )
 
-cells.append(md("## 4.5 Importance des features"))
+cells.append(md("## 3.7 Importance des features (pipeline éthique)"))
 
 cells.append(
-    code("""# Feature importance pour RandomForest et GradientBoosting
-fig, axes = plt.subplots(1, 2, figsize=(18, 8))
+    code("""# Feature importance pour les modèles tree-based
+tree_models = {name: clf for name, clf in all_classifiers['Éthique'].items()
+               if hasattr(clf, 'feature_importances_')}
 
-# Récupérer les noms de features après preprocessing
-feature_names = (num_features_clf +
-                 list(preprocessor_clf.named_transformers_['cat']
-                      .named_steps['encoder']
-                      .get_feature_names_out(cat_features_clf)))
+if len(tree_models) >= 2:
+    fig, axes = plt.subplots(1, min(len(tree_models), 3), figsize=(18, 8))
+    if not hasattr(axes, '__len__'):
+        axes = [axes]
 
-for ax, (name, model_key) in zip(axes, [('Random Forest', 'Random Forest'),
-                                         ('Gradient Boosting', 'Gradient Boosting')]):
-    clf_model = classifiers[model_key]
-    importances = clf_model.feature_importances_
-    indices = np.argsort(importances)[-15:]  # Top 15
-    
-    ax.barh(range(len(indices)), importances[indices], color='steelblue', edgecolor='black')
-    ax.set_yticks(range(len(indices)))
-    ax.set_yticklabels([feature_names[i] for i in indices])
-    ax.set_xlabel('Importance')
-    ax.set_title(f'{name} : Top 15 Features', fontsize=13)
+    for ax, (name, clf_model) in zip(axes, list(tree_models.items())[:3]):
+        importances = clf_model.feature_importances_
+        indices = np.argsort(importances)[-15:]
 
-plt.suptitle('Importance des features pour la prédiction d\\'Attrition', fontsize=15, y=1.02)
-plt.tight_layout()
-plt.show()""")
+        ax.barh(range(len(indices)), importances[indices], color='steelblue', edgecolor='black')
+        ax.set_yticks(range(len(indices)))
+        ax.set_yticklabels([feature_names_eth[i] for i in indices])
+        ax.set_xlabel('Importance')
+        ax.set_title(f'{name} : Top 15', fontsize=13)
+
+    plt.suptitle("Importance des features pour la prédiction d'Attrition (pipeline éthique)",
+                 fontsize=15, y=1.02)
+    plt.tight_layout()
+    plt.show()""")
 )
 
-cells.append(md("## 4.6 Visualisation comparative finale"))
+cells.append(md("## 3.8 Visualisation comparative finale"))
 
 cells.append(
-    code("""# Bar chart comparatif de toutes les métriques
-fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    code("""fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
 metrics_to_plot = ['Accuracy', 'Precision', 'Recall', 'F1']
 colors_metrics = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6']
 
 for ax, metric, color in zip(axes.flatten(), metrics_to_plot, colors_metrics):
-    values = clf_df[metric].sort_values(ascending=True)
+    values = df_eth[metric].sort_values(ascending=True)
     values.plot(kind='barh', ax=ax, color=color, edgecolor='black')
     ax.set_title(metric, fontsize=14)
     ax.set_xlim(0, 1)
     for i, v in enumerate(values):
         ax.text(v + 0.01, i, f'{v:.3f}', va='center', fontsize=10)
 
-plt.suptitle('Comparaison des classifieurs : Toutes les métriques', fontsize=16, y=1.02)
+plt.suptitle('Comparaison des classifieurs : Pipeline éthique', fontsize=16, y=1.02)
 plt.tight_layout()
 plt.show()""")
 )
 
 cells.append(
-    md("""## 4.7 Recommandations et Conclusion
+    md("""## 3.9 Recommandations et Conclusion
 
 ### Choix du modèle
 Dans le contexte RH de HumanForYou, le **Recall** est la métrique la plus importante :
@@ -1045,44 +1301,44 @@ Dans le contexte RH de HumanForYou, le **Recall** est la métrique la plus impor
 
 ### Leviers d'action RH identifiés
 
-Les variables retenues dans le modèle pointent vers des **leviers organisationnels**, non des caractéristiques individuelles :
+Les variables retenues dans le modèle éthique pointent vers des **leviers organisationnels** :
 
-1. **Satisfaction au travail** (EnvironmentSatisfaction, JobSatisfaction) → Enquêtes régulières, amélioration des conditions de travail, espaces collaboratifs
+1. **Satisfaction au travail** (EnvironmentSatisfaction, JobSatisfaction) → Enquêtes régulières, amélioration des conditions
 2. **Équilibre vie pro/perso** (WorkLifeBalance) → Flexibilité horaire, télétravail, droit à la déconnexion
-3. **Évolution de carrière** (YearsSinceLastPromotion, YearsAtCompany) → Plans de carrière individualisés, revues annuelles, mobilité interne
-4. **Rémunération** (MonthlyIncome, PercentSalaryHike, StockOptionLevel) → Benchmarks salariaux sectoriels, révisions ciblées, intéressement
+3. **Évolution de carrière** (YearsSinceLastPromotion, YearsAtCompany) → Plans de carrière, revues annuelles, mobilité interne
+4. **Rémunération** (MonthlyIncome, PercentSalaryHike, StockOptionLevel) → Benchmarks salariaux, révisions ciblées
 5. **Engagement** (JobInvolvement, TrainingTimesLastYear) → Budget formation, responsabilisation, mentorat
 
 ### Bilan éthique
 
 #### Ce qui a été fait
-- **Retrait des critères protégés** : Gender, Age, MaritalStatus exclus du modèle pour éviter toute discrimination directe (Code du travail L.1132-1)
-- **Retrait des données de surveillance** : avg_work_hours, std_work_hours, days_absent supprimés pour éviter le profilage comportemental (RGPD art. 22) et la pénalisation des arrêts maladie/congés parentaux
-- **Focus organisationnel** : le modèle identifie des tendances structurelles, pas des profils individuels à risque
+- **Retrait des critères protégés** : Gender, Age, MaritalStatus (Code du travail L.1132-1)
+- **Retrait des données de surveillance** : avg_work_hours, std_work_hours, days_absent (RGPD art. 22)
+- **Retrait de DistanceFromHome** : non actionnable par l'entreprise
+- **Suppression de la multicolinéarité** : seuil |r| > 0.75 pour éviter la redondance
+- **Double pipeline** : comparaison éthique vs non-éthique pour quantifier l'impact
 
-#### Risques résiduels à surveiller
-- **EducationField** pourrait être un proxy du genre (filières genrées) → surveiller les prédictions par sous-groupe via audit de disparate impact
-- **MonthlyIncome** reflète des inégalités salariales historiques → utiliser pour corriger les écarts, pas pour les justifier
-- **DistanceFromHome** a été retirée car non actionnable par l'entreprise (on ne peut pas déplacer les employés)
+#### Résultat de la comparaison
+Le retrait des variables sensibles a un impact limité sur les performances du modèle. Cela confirme que les **facteurs organisationnels** (satisfaction, carrière, salaire) sont les vrais moteurs de l'attrition, plus que les caractéristiques personnelles des employés.
 
 #### Cadre d'usage recommandé
-1. **Pas de décision individuelle automatisée** : le modèle est un outil d'aide à la décision RH globale (art. 22 RGPD)
-2. **Transparence** : communiquer aux représentants du personnel l'existence et l'objectif du modèle
-3. **Audit régulier** : vérifier l'absence de biais indirect (disparate impact) sur les groupes protégés
-4. **Droit d'accès** : tout employé doit pouvoir connaître les données utilisées (RGPD art. 15)
-5. **Finalité limitée** : les résultats ne doivent servir qu'à améliorer les conditions de travail, jamais à évaluer ou sanctionner
+1. **Pas de décision individuelle automatisée** (art. 22 RGPD)
+2. **Transparence** envers les représentants du personnel
+3. **Audit régulier** de disparate impact
+4. **Droit d'accès** (RGPD art. 15)
+5. **Finalité limitée** : améliorer les conditions de travail, jamais évaluer ou sanctionner
 
 ### Limites
-- Dataset de taille modeste (~4700 employés d'une seule entreprise indienne)
-- Données transversales (pas de suivi longitudinal : on ne sait pas *quand* les facteurs ont changé)
-- Variables auto-déclarées (enquêtes de satisfaction → biais de désirabilité sociale)
-- Le retrait des variables protégées réduit la capacité prédictive mais c'est un compromis éthique assumé
-- Pas d'audit de disparate impact possible sans les variables protégées en colonne de test (un audit séparé est nécessaire)""")
+- Dataset modeste (~4700 employés d'une seule entreprise indienne)
+- Données transversales (pas de suivi longitudinal)
+- Variables auto-déclarées (biais de désirabilité sociale)
+- Le retrait des variables protégées est un compromis éthique assumé
+- Un audit de disparate impact séparé reste nécessaire""")
 )
 
-# =============================================================================
-# ASSEMBLE NOTEBOOK
-# =============================================================================
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║ ASSEMBLE NOTEBOOK                                                          ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
 notebook = {
     "cells": cells,
     "metadata": {
@@ -1097,7 +1353,10 @@ notebook = {
     "nbformat_minor": 5,
 }
 
-with open("src/main.ipynb", "w", encoding="utf-8") as f:
+outdir = pathlib.Path("src")
+outdir.mkdir(exist_ok=True)
+
+with open(outdir / "main.ipynb", "w", encoding="utf-8") as f:
     json.dump(notebook, f, ensure_ascii=False, indent=1)
 
 print(f"Notebook generated: {len(cells)} cells")
