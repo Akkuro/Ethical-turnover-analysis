@@ -2,9 +2,9 @@
 
 Structure:
   - Cadrage éthique
-  - Partie 1 : EDA (avec détection de multicolinéarité)
-  - Partie 2 : Classification (boucle éthique vs non-éthique, optimisation, deep-dive)
-  - Partie 3 : Analyse comparative et recommandations
+  - Partie 1 : EDA (multicolinéarité unifiée sur les deux datasets)
+  - Partie 2 : Classification (boucle sur feature flag ethical_filter)
+  - Partie 3 : Analyse comparative côte à côte et recommandations
 """
 
 import json, pathlib
@@ -84,9 +84,9 @@ Avant toute modélisation, il est essentiel d'identifier les variables susceptib
 
 ## Approche comparative
 
-Nous exécutons la pipeline de classification **deux fois** via une boucle :
-1. **Avec filtre éthique** : variables sensibles supprimées
-2. **Sans filtre éthique** : toutes les variables conservées
+Un **feature flag** `ethical_filter` (booléen) pilote la classification. La boucle `for ethical_filter in [True, False]` exécute **la même pipeline** sur :
+1. `ethical_filter = True` → dataset éthique (`df`) : variables sensibles supprimées
+2. `ethical_filter = False` → dataset complet (`df_full`) : toutes les variables conservées
 
 Les résultats sont comparés côte à côte en Partie 3 pour quantifier l'impact du filtre éthique sur les performances.""")
 )
@@ -493,7 +493,7 @@ cells.append(
     plt.show()""")
 )
 
-# --- MULTICOLLINEARITY ---
+# --- MULTICOLLINEARITY (UNIFIED) ---
 cells.append(
     md("""## 1.11 Détection et suppression de la multicolinéarité
 
@@ -506,48 +506,54 @@ Deux features fortement corrélées entre elles apportent de l'information redon
 Ce seuil permet de supprimer les features qui partagent une part substantielle d'information :
 - **0.90+** : trop permissif, laisse passer des quasi-doublons
 - **0.75** : bon compromis, supprime les features qui partagent >56% de variance commune (r² > 0.56)
-- **0.50** : trop agressif, supprime des features avec des signaux distincts""")
+- **0.50** : trop agressif, supprime des features avec des signaux distincts
+
+On applique cette détection sur **les deux datasets** (éthique et complet) en une seule passe.""")
 )
 
 cells.append(
-    code("""# Détection des paires fortement corrélées (|r| > 0.75)
-CORR_THRESHOLD = 0.75
+    code("""CORR_THRESHOLD = 0.75
 
-corr_abs = corr_matrix.abs()
-upper = corr_abs.where(np.triu(np.ones_like(corr_abs, dtype=bool), k=1))
+def remove_multicollinearity(data, threshold, label):
+    \"\"\"Supprime les features fortement corrélées en gardant celle la plus liée à Attrition.\"\"\"
+    num = data.select_dtypes(include=[np.number]).columns.tolist()
+    corr_mat = data[num].corr()
+    upper = corr_mat.abs().where(np.triu(np.ones_like(corr_mat, dtype=bool), k=1))
 
-# Trouver les paires
-high_corr_pairs = []
-for col in upper.columns:
-    for idx in upper.index:
-        val = upper.loc[idx, col]
-        if pd.notna(val) and val > CORR_THRESHOLD and col != 'Attrition' and idx != 'Attrition':
-            high_corr_pairs.append((idx, col, corr_matrix.loc[idx, col]))
+    high_pairs = []
+    for col in upper.columns:
+        for idx in upper.index:
+            val = upper.loc[idx, col]
+            if pd.notna(val) and val > threshold and col != 'Attrition' and idx != 'Attrition':
+                high_pairs.append((idx, col, corr_mat.loc[idx, col]))
 
-if high_corr_pairs:
-    print(f"Paires avec |corrélation| > {CORR_THRESHOLD} :\\n")
-    for f1, f2, r in sorted(high_corr_pairs, key=lambda x: abs(x[2]), reverse=True):
-        print(f"  {f1:30s} ↔ {f2:30s}  r = {r:+.3f}")
-
-    # Stratégie : pour chaque paire, supprimer celle qui a la corrélation
-    # la plus faible (en absolu) avec Attrition
     cols_to_remove = set()
-    for f1, f2, r in high_corr_pairs:
-        if f1 in cols_to_remove or f2 in cols_to_remove:
-            continue  # déjà marquée
-        corr_f1 = abs(corr_matrix.loc[f1, 'Attrition']) if f1 in corr_matrix.index else 0
-        corr_f2 = abs(corr_matrix.loc[f2, 'Attrition']) if f2 in corr_matrix.index else 0
-        to_drop = f1 if corr_f1 < corr_f2 else f2
-        cols_to_remove.add(to_drop)
-        print(f"\\n  → Suppression de '{to_drop}' (|corr avec Attrition| = "
-              f"{min(corr_f1, corr_f2):.4f} < {max(corr_f1, corr_f2):.4f})")
+    if high_pairs:
+        print(f"\\n[{label}] Paires avec |corrélation| > {threshold} :")
+        for f1, f2, r in sorted(high_pairs, key=lambda x: abs(x[2]), reverse=True):
+            print(f"  {f1:30s} ↔ {f2:30s}  r = {r:+.3f}")
 
-    df = df.drop(columns=list(cols_to_remove))
-    print(f"\\nColonnes supprimées pour multicolinéarité : {list(cols_to_remove)}")
-    print(f"Dataset après suppression : {df.shape}")
-else:
-    print(f"Aucune paire avec |corrélation| > {CORR_THRESHOLD}")
-    print("Pas de suppression nécessaire.")""")
+        for f1, f2, r in high_pairs:
+            if f1 in cols_to_remove or f2 in cols_to_remove:
+                continue
+            c1 = abs(corr_mat.loc[f1, 'Attrition']) if f1 in corr_mat.index else 0
+            c2 = abs(corr_mat.loc[f2, 'Attrition']) if f2 in corr_mat.index else 0
+            drop = f1 if c1 < c2 else f2
+            cols_to_remove.add(drop)
+            print(f"  → Suppression de '{drop}' "
+                  f"(|corr Attrition| = {min(c1,c2):.4f} < {max(c1,c2):.4f})")
+
+        data = data.drop(columns=list(cols_to_remove))
+        print(f"  Colonnes supprimées : {list(cols_to_remove)}")
+    else:
+        print(f"[{label}] Aucune paire > {threshold}, pas de suppression.")
+
+    print(f"  → {label} après multicolinéarité : {data.shape}")
+    return data
+
+# Appliquer sur les deux datasets en une seule passe
+df      = remove_multicollinearity(df,      CORR_THRESHOLD, 'Éthique')
+df_full = remove_multicollinearity(df_full, CORR_THRESHOLD, 'Non-éthique')""")
 )
 
 cells.append(
@@ -558,21 +564,26 @@ cells.append(
 - Les variables les plus corrélées avec l'attrition identifient des **leviers organisationnels** (satisfaction, carrière, rémunération)
 - Les features de surveillance (heures, absences) ont été exclues pour raisons éthiques
 - Les features fortement corrélées entre elles ont été réduites pour éviter la redondance
+- La multicolinéarité a été traitée de manière identique sur les deux datasets
 
 ---""")
 )
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║ PART 2 : CLASSIFICATION (LOOP OVER ETHICAL / NON-ETHICAL)                 ║
+# ║ PART 2 : CLASSIFICATION (FEATURE FLAG LOOP)                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 cells.append(
-    md("""# Partie 2 : Classification (boucle éthique vs non-éthique)
+    md("""# Partie 2 : Classification (boucle sur le feature flag `ethical_filter`)
 
-On entraîne **les mêmes 8 classifieurs** sur deux versions du dataset :
-1. **Éthique** (`df`) : variables sensibles supprimées
-2. **Non-éthique** (`df_full`) : toutes les variables conservées
+Un **feature flag** `ethical_filter` (booléen) pilote toute la classification.
+La boucle `for ethical_filter in [True, False]` exécute **exactement la même pipeline** sur :
 
-Le code est factorisé dans une boucle pour éviter la duplication. Chaque pipeline suit les mêmes étapes : préparation, entraînement, optimisation.""")
+| `ethical_filter` | Dataset | Description |
+|---|---|---|
+| `True` | `df` | Variables sensibles supprimées |
+| `False` | `df_full` | Toutes les variables conservées |
+
+Aucun code n'est dupliqué entre les deux pipelines.""")
 )
 
 cells.append(md("## 2.1 Préparation des deux pipelines"))
@@ -584,38 +595,18 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 
-# ─── Multicolinéarité sur df_full (df éthique déjà traité en §1.11) ───
-num_cols_full = df_full.select_dtypes(include=[np.number]).columns.tolist()
-corr_full = df_full[num_cols_full].corr()
-upper_full = corr_full.abs().where(np.triu(np.ones_like(corr_full, dtype=bool), k=1))
-
-cols_to_remove_full = set()
-for col in upper_full.columns:
-    for idx in upper_full.index:
-        val = upper_full.loc[idx, col]
-        if pd.notna(val) and val > CORR_THRESHOLD and col != 'Attrition' and idx != 'Attrition':
-            if idx not in cols_to_remove_full and col not in cols_to_remove_full:
-                corr_f1 = abs(corr_full.loc[idx, 'Attrition'])
-                corr_f2 = abs(corr_full.loc[col, 'Attrition'])
-                to_drop = idx if corr_f1 < corr_f2 else col
-                cols_to_remove_full.add(to_drop)
-
-if cols_to_remove_full:
-    df_full = df_full.drop(columns=list(cols_to_remove_full))
-    print(f"Colonnes supprimées du dataset complet (multicolinéarité) : {list(cols_to_remove_full)}")
-else:
-    print("Aucune suppression de multicolinéarité nécessaire sur df_full.")
-
-# ─── Définition des deux pipelines à comparer ───
-datasets = {
-    'Éthique': df,
-    'Non-éthique': df_full,
-}
+# ─── Feature flag : ethical_filter ───
+# Le flag contrôle si les variables sensibles sont incluses ou non.
+# On boucle sur [True, False] pour exécuter la même pipeline
+# sur les deux configurations et comparer les résultats.
 
 target = 'Attrition'
 pipeline_data = {}
 
-for pipe_name, pipe_df in datasets.items():
+for ethical_filter in [True, False]:
+    label = 'Éthique' if ethical_filter else 'Non-éthique'
+    pipe_df = df if ethical_filter else df_full
+
     X = pipe_df.drop(columns=[target])
     y = pipe_df[target].copy()
 
@@ -648,7 +639,8 @@ for pipe_name, pipe_df in datasets.items():
                        .named_steps['encoder']
                        .get_feature_names_out(cat_feats)))
 
-    pipeline_data[pipe_name] = {
+    pipeline_data[label] = {
+        'ethical_filter': ethical_filter,
         'X': X, 'y': y,
         'X_train': X_train_proc, 'X_test': X_test_proc,
         'y_train': y_train, 'y_test': y_test,
@@ -659,7 +651,7 @@ for pipe_name, pipe_df in datasets.items():
     }
 
     print(f"\\n{'='*50}")
-    print(f" Pipeline : {pipe_name}")
+    print(f" Pipeline : {label}  (ethical_filter={ethical_filter})")
     print(f"{'='*50}")
     print(f"  Features numériques   : {len(num_feats)}")
     print(f"  Features catégorielles: {len(cat_feats)}")
@@ -763,31 +755,32 @@ cells.append(
     code("""all_results = {}
 all_classifiers = {}
 
-for pipe_name in datasets:
-    d = pipeline_data[pipe_name]
+for label in pipeline_data:
+    d = pipeline_data[label]
     classifiers = get_classifiers()
 
+    ef = d['ethical_filter']
     print(f"\\n{'='*60}")
-    print(f" Entraînement : {pipe_name}")
+    print(f" Entraînement : {label}  (ethical_filter={ef})")
     print(f"{'='*60}\\n")
 
     results = train_and_evaluate(
         classifiers, d['X_train'], d['X_test'], d['y_train'], d['y_test']
     )
 
-    all_results[pipe_name] = results
-    all_classifiers[pipe_name] = classifiers""")
+    all_results[label] = results
+    all_classifiers[label] = classifiers""")
 )
 
 cells.append(md("## 2.4 Rapports de classification détaillés"))
 
 cells.append(
-    code("""for pipe_name in datasets:
-    d = pipeline_data[pipe_name]
-    results = all_results[pipe_name]
+    code("""for label in pipeline_data:
+    d = pipeline_data[label]
+    results = all_results[label]
 
     print(f"\\n{'#'*60}")
-    print(f" Rapports : {pipe_name}")
+    print(f" Rapports : {label}  (ethical_filter={d['ethical_filter']})")
     print(f"{'#'*60}")
 
     for name in results:
@@ -862,13 +855,13 @@ base_model_factories = {
 
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
 
-for pipe_name in datasets:
-    d = pipeline_data[pipe_name]
-    results = all_results[pipe_name]
-    classifiers = all_classifiers[pipe_name]
+for label in pipeline_data:
+    d = pipeline_data[label]
+    results = all_results[label]
+    classifiers = all_classifiers[label]
 
     print(f"\\n{'#'*60}")
-    print(f" Optimisation : {pipe_name}")
+    print(f" Optimisation : {label}  (ethical_filter={d['ethical_filter']})")
     print(f"{'#'*60}")
 
     ranking = results_to_df(results).sort_values('F1', ascending=False)
@@ -936,9 +929,10 @@ cells.append(
 print(" RÉSULTATS COMPARATIFS (après optimisation)")
 print("="*80)
 
-for pipe_name in datasets:
-    df_res = results_to_df(all_results[pipe_name]).sort_values('F1', ascending=False)
-    print(f"\\n--- {pipe_name} ---\\n")
+for label in pipeline_data:
+    df_res = results_to_df(all_results[label]).sort_values('F1', ascending=False)
+    ef = pipeline_data[label]['ethical_filter']
+    print(f"\\n--- {label} (ethical_filter={ef}) ---\\n")
     print(df_res[['Accuracy', 'Precision', 'Recall', 'F1', 'AUC-ROC']]
           .to_string(float_format=lambda x: f'{x:.4f}'))
     print(f"\\n🏆 Meilleur F1 : {df_res.index[0]} ({df_res['F1'].iloc[0]:.4f})")""")
@@ -1077,24 +1071,24 @@ else:
 )
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║ PART 3 : COMPARATIVE ANALYSIS                                             ║
+# ║ PART 3 : COMPARATIVE ANALYSIS (SIDE-BY-SIDE)                              ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 cells.append(md("# Partie 3 : Analyse Comparative et Recommandations"))
 
 cells.append(md("## 3.1 Tableau comparatif : éthique vs non-éthique"))
 
 cells.append(
-    code("""df_eth = results_to_df(all_results['Éthique']).sort_values('F1', ascending=False)
-df_noeth = results_to_df(all_results['Non-éthique']).sort_values('F1', ascending=False)
+    code("""df_res_eth = results_to_df(all_results['Éthique']).sort_values('F1', ascending=False)
+df_res_noeth = results_to_df(all_results['Non-éthique']).sort_values('F1', ascending=False)
 
-print("=== AVEC filtre éthique ===\\n")
-print(df_eth[['Accuracy', 'Precision', 'Recall', 'F1', 'AUC-ROC']].to_string(float_format=lambda x: f'{x:.4f}'))
+print("=== AVEC filtre éthique (ethical_filter=True) ===\\n")
+print(df_res_eth[['Accuracy', 'Precision', 'Recall', 'F1', 'AUC-ROC']].to_string(float_format=lambda x: f'{x:.4f}'))
 
-print(f"\\n\\n=== SANS filtre éthique ===\\n")
-print(df_noeth[['Accuracy', 'Precision', 'Recall', 'F1', 'AUC-ROC']].to_string(float_format=lambda x: f'{x:.4f}'))
+print(f"\\n\\n=== SANS filtre éthique (ethical_filter=False) ===\\n")
+print(df_res_noeth[['Accuracy', 'Precision', 'Recall', 'F1', 'AUC-ROC']].to_string(float_format=lambda x: f'{x:.4f}'))
 
-print(f"\\n\\n🏆 Meilleur F1 éthique    : {df_eth.index[0]} ({df_eth['F1'].iloc[0]:.4f})")
-print(f"🏆 Meilleur F1 non-éthique : {df_noeth.index[0]} ({df_noeth['F1'].iloc[0]:.4f})")""")
+print(f"\\n\\n🏆 Meilleur F1 éthique    : {df_res_eth.index[0]} ({df_res_eth['F1'].iloc[0]:.4f})")
+print(f"🏆 Meilleur F1 non-éthique : {df_res_noeth.index[0]} ({df_res_noeth['F1'].iloc[0]:.4f})")""")
 )
 
 cells.append(md("## 3.2 Impact du filtre éthique par modèle"))
@@ -1102,12 +1096,12 @@ cells.append(md("## 3.2 Impact du filtre éthique par modèle"))
 cells.append(
     code("""# Comparaison côte à côte
 comparison = pd.DataFrame({
-    'F1_ethique': df_eth['F1'],
-    'F1_non_ethique': df_noeth.reindex(df_eth.index)['F1'],
-    'Recall_ethique': df_eth['Recall'],
-    'Recall_non_ethique': df_noeth.reindex(df_eth.index)['Recall'],
-    'AUC_ethique': df_eth['AUC-ROC'],
-    'AUC_non_ethique': df_noeth.reindex(df_eth.index)['AUC-ROC'],
+    'F1_ethique': df_res_eth['F1'],
+    'F1_non_ethique': df_res_noeth.reindex(df_res_eth.index)['F1'],
+    'Recall_ethique': df_res_eth['Recall'],
+    'Recall_non_ethique': df_res_noeth.reindex(df_res_eth.index)['Recall'],
+    'AUC_ethique': df_res_eth['AUC-ROC'],
+    'AUC_non_ethique': df_res_noeth.reindex(df_res_eth.index)['AUC-ROC'],
 })
 comparison['Delta_F1'] = comparison['F1_non_ethique'] - comparison['F1_ethique']
 comparison['Delta_Recall'] = comparison['Recall_non_ethique'] - comparison['Recall_ethique']
@@ -1129,7 +1123,7 @@ else:
     print("  Les variables sensibles apportaient du bruit.")""")
 )
 
-cells.append(md("## 3.3 Graphiques comparatifs"))
+cells.append(md("## 3.3 Graphiques comparatifs (barres)"))
 
 cells.append(
     code("""fig, axes = plt.subplots(1, 3, figsize=(20, 7))
@@ -1140,12 +1134,12 @@ for ax, metric, color_e, color_n in zip(
     ['#2ecc71', '#3498db', '#9b59b6'],
     ['#e74c3c', '#e67e22', '#e74c3c']
 ):
-    models = df_eth.index
+    models = df_res_eth.index
     x = np.arange(len(models))
     width = 0.35
 
-    vals_eth = df_eth.loc[models, metric]
-    vals_noeth = df_noeth.reindex(models)[metric]
+    vals_eth = df_res_eth.loc[models, metric]
+    vals_noeth = df_res_noeth.reindex(models)[metric]
 
     ax.barh(x - width/2, vals_eth, width, label='Éthique', color=color_e, edgecolor='black')
     ax.barh(x + width/2, vals_noeth, width, label='Sans filtre', color=color_n, edgecolor='black', alpha=0.7)
@@ -1160,82 +1154,92 @@ plt.tight_layout()
 plt.show()""")
 )
 
-cells.append(md("## 3.4 Matrices de confusion (pipeline éthique)"))
+cells.append(md("## 3.4 Matrices de confusion côte à côte"))
 
 cells.append(
-    code("""d_eth = pipeline_data['Éthique']
-n_models = len(all_classifiers['Éthique'])
-n_cols_cm = 4
-n_rows_cm = (n_models + n_cols_cm - 1) // n_cols_cm
+    code("""model_names = list(all_classifiers['Éthique'].keys())
+n_models = len(model_names)
 
-fig, axes = plt.subplots(n_rows_cm, n_cols_cm, figsize=(20, 5 * n_rows_cm))
-axes = axes.flatten()
+fig, axes = plt.subplots(n_models, 2, figsize=(12, 4 * n_models))
 
-for i, (name, clf) in enumerate(all_classifiers['Éthique'].items()):
-    cm = confusion_matrix(d_eth['y_test'], all_results['Éthique'][name]['y_pred'])
-    disp = ConfusionMatrixDisplay(cm, display_labels=['No', 'Yes'])
-    disp.plot(ax=axes[i], cmap='Blues', colorbar=False)
-    axes[i].set_title(name, fontsize=11)
+for i, name in enumerate(model_names):
+    for j, label in enumerate(['Éthique', 'Non-éthique']):
+        d = pipeline_data[label]
+        cm = confusion_matrix(d['y_test'], all_results[label][name]['y_pred'])
+        disp = ConfusionMatrixDisplay(cm, display_labels=['No', 'Yes'])
+        disp.plot(ax=axes[i, j], cmap='Blues' if j == 0 else 'Oranges', colorbar=False)
+        axes[i, j].set_title(f'{name} — {label}', fontsize=10)
 
-for j in range(i + 1, len(axes)):
-    axes[j].set_visible(False)
-
-plt.suptitle('Matrices de confusion : Pipeline éthique', fontsize=16, y=1.02)
+plt.suptitle('Matrices de confusion : Éthique (bleu) vs Non-éthique (orange)', fontsize=15, y=1.01)
 plt.tight_layout()
 plt.show()""")
 )
 
-cells.append(md("## 3.5 Courbes ROC (pipeline éthique)"))
+cells.append(md("## 3.5 Courbes ROC côte à côte"))
 
 cells.append(
-    code("""plt.figure(figsize=(10, 8))
+    code("""fig, axes = plt.subplots(1, 2, figsize=(18, 7))
 
-for name, clf in all_classifiers['Éthique'].items():
-    if hasattr(clf, 'predict_proba'):
-        y_proba = clf.predict_proba(d_eth['X_test'])[:, 1]
-    elif hasattr(clf, 'decision_function'):
-        y_proba = clf.decision_function(d_eth['X_test'])
-    else:
-        continue
+for ax, label, color_cycle in zip(axes, ['Éthique', 'Non-éthique'], ['tab10', 'tab10']):
+    d = pipeline_data[label]
+    cmap = plt.get_cmap(color_cycle)
 
-    fpr, tpr, _ = roc_curve(d_eth['y_test'], y_proba)
-    auc_val = roc_auc_score(d_eth['y_test'], y_proba)
-    plt.plot(fpr, tpr, label=f'{name} (AUC={auc_val:.3f})', linewidth=2)
+    for k, (name, clf) in enumerate(all_classifiers[label].items()):
+        if hasattr(clf, 'predict_proba'):
+            y_proba = clf.predict_proba(d['X_test'])[:, 1]
+        elif hasattr(clf, 'decision_function'):
+            y_proba = clf.decision_function(d['X_test'])
+        else:
+            continue
 
-plt.plot([0, 1], [0, 1], 'k--', linewidth=1, label='Random (AUC=0.500)')
-plt.xlabel('Taux de faux positifs (FPR)', fontsize=12)
-plt.ylabel('Taux de vrais positifs (TPR)', fontsize=12)
-plt.title('Courbes ROC : Pipeline éthique', fontsize=14)
-plt.legend(loc='lower right', fontsize=10)
-plt.grid(True, alpha=0.3)
+        fpr, tpr, _ = roc_curve(d['y_test'], y_proba)
+        auc_val = roc_auc_score(d['y_test'], y_proba)
+        ax.plot(fpr, tpr, label=f'{name} ({auc_val:.3f})',
+                linewidth=2, color=cmap(k / max(len(all_classifiers[label]) - 1, 1)))
+
+    ax.plot([0, 1], [0, 1], 'k--', linewidth=1, label='Random (0.500)')
+    ax.set_xlabel('FPR', fontsize=12)
+    ax.set_ylabel('TPR', fontsize=12)
+    ax.set_title(f'ROC — {label}', fontsize=14)
+    ax.legend(loc='lower right', fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+plt.suptitle('Courbes ROC : Éthique vs Non-éthique', fontsize=16, y=1.02)
 plt.tight_layout()
 plt.show()""")
 )
 
-cells.append(md("## 3.6 Courbes Precision-Recall (pipeline éthique)"))
+cells.append(md("## 3.6 Courbes Precision-Recall côte à côte"))
 
 cells.append(
-    code("""plt.figure(figsize=(10, 8))
+    code("""fig, axes = plt.subplots(1, 2, figsize=(18, 7))
 
-for name, clf in all_classifiers['Éthique'].items():
-    if hasattr(clf, 'predict_proba'):
-        y_proba = clf.predict_proba(d_eth['X_test'])[:, 1]
-    elif hasattr(clf, 'decision_function'):
-        y_proba = clf.decision_function(d_eth['X_test'])
-    else:
-        continue
+for ax, label in zip(axes, ['Éthique', 'Non-éthique']):
+    d = pipeline_data[label]
+    cmap = plt.get_cmap('tab10')
 
-    precision_vals, recall_vals, _ = precision_recall_curve(d_eth['y_test'], y_proba)
-    ap = average_precision_score(d_eth['y_test'], y_proba)
-    plt.plot(recall_vals, precision_vals, label=f'{name} (AP={ap:.3f})', linewidth=2)
+    for k, (name, clf) in enumerate(all_classifiers[label].items()):
+        if hasattr(clf, 'predict_proba'):
+            y_proba = clf.predict_proba(d['X_test'])[:, 1]
+        elif hasattr(clf, 'decision_function'):
+            y_proba = clf.decision_function(d['X_test'])
+        else:
+            continue
 
-baseline = d_eth['y_test'].mean()
-plt.axhline(y=baseline, color='gray', linestyle='--', label=f'Baseline ({baseline:.3f})')
-plt.xlabel('Recall', fontsize=12)
-plt.ylabel('Precision', fontsize=12)
-plt.title('Courbes Precision-Recall : Pipeline éthique', fontsize=14)
-plt.legend(loc='upper right', fontsize=10)
-plt.grid(True, alpha=0.3)
+        precision_vals, recall_vals, _ = precision_recall_curve(d['y_test'], y_proba)
+        ap = average_precision_score(d['y_test'], y_proba)
+        ax.plot(recall_vals, precision_vals, label=f'{name} (AP={ap:.3f})',
+                linewidth=2, color=cmap(k / max(len(all_classifiers[label]) - 1, 1)))
+
+    baseline = d['y_test'].mean()
+    ax.axhline(y=baseline, color='gray', linestyle='--', label=f'Baseline ({baseline:.3f})')
+    ax.set_xlabel('Recall', fontsize=12)
+    ax.set_ylabel('Precision', fontsize=12)
+    ax.set_title(f'Precision-Recall — {label}', fontsize=14)
+    ax.legend(loc='upper right', fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+plt.suptitle('Courbes Precision-Recall : Éthique vs Non-éthique', fontsize=16, y=1.02)
 plt.tight_layout()
 plt.show()""")
 )
@@ -1277,7 +1281,7 @@ metrics_to_plot = ['Accuracy', 'Precision', 'Recall', 'F1']
 colors_metrics = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6']
 
 for ax, metric, color in zip(axes.flatten(), metrics_to_plot, colors_metrics):
-    values = df_eth[metric].sort_values(ascending=True)
+    values = df_res_eth[metric].sort_values(ascending=True)
     values.plot(kind='barh', ax=ax, color=color, edgecolor='black')
     ax.set_title(metric, fontsize=14)
     ax.set_xlim(0, 1)
@@ -1316,7 +1320,7 @@ Les variables retenues dans le modèle éthique pointent vers des **leviers orga
 - **Retrait des données de surveillance** : avg_work_hours, std_work_hours, days_absent (RGPD art. 22)
 - **Retrait de DistanceFromHome** : non actionnable par l'entreprise
 - **Suppression de la multicolinéarité** : seuil |r| > 0.75 pour éviter la redondance
-- **Double pipeline** : comparaison éthique vs non-éthique pour quantifier l'impact
+- **Double pipeline** : comparaison éthique vs non-éthique via feature flag `ethical_filter`
 
 #### Résultat de la comparaison
 Le retrait des variables sensibles a un impact limité sur les performances du modèle. Cela confirme que les **facteurs organisationnels** (satisfaction, carrière, salaire) sont les vrais moteurs de l'attrition, plus que les caractéristiques personnelles des employés.
