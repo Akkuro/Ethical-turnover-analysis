@@ -1,0 +1,55 @@
+2-Boucle PBL
+Objectifs d'apprentissage
+Régression linéaire et non linéaire
+[1] Identifier une tâche de régression à partir d'un jeu de données ou d'une application réelle
+[1] Lister les différents types de régression linéaire (simple, multiple) et non linéaire (polynomiale, par noyau, etc.).
+Apprentissage supervisé : Régression
+[5] Estimer la pertinence et l’efficacité des modèles développés pour résoudre les tâches assignées
+[6] Proposer des améliorations pour les modèles de régression linéaire et non-linéaire en fonction des résultats obtenus et des analyses de résidus
+[2] Citer des modèles développés pour résoudre les tâches assignées
+[4] Analyser les performances des modèles de régression en utilisant des métriques telles que le coefficient de détermination (R²) et l'erreur quadratique moyenne (MSE)
+Sujet
+Questions/réponses
+Un forum appelé « Questions aux experts » est proposé à l'issue de cette boucle PBL. Des experts CESI seront disponibles pour répondre à vos interrogations.
+
+Veuillez noter que vous ne devez pas vous attendre à une réponse immédiate à vos questions. Les intervenants du forum se connecteront à certains moments uniquement pour répondre aux questions, en fonction de leur emploi du temps.
+
+Il est important de comprendre que le forum n'est pas destiné à fournir des réponses directes aux sujets des boucles PBL ou du projet. Son objectif est plutôt de fournir des éclaircissements et des ressources complémentaires pour vous aider à mieux comprendre les concepts abordés.
+
+Énoncé
+Prédictions immobilières
+Nous avons fait d'importants progrès dans notre traitement des données. Maintenant, il est crucial d'exploiter pleinement tous les outils à notre disposition pour optimiser le fonctionnement de notre société immobilière.
+
+Comme pour toute entreprise en relation avec ses clients, l'exactitude des prix proposés est une préoccupation majeure. Nous sommes désormais convaincus que notre dispositif sera capable de prédire le prix de chaque bien que nous ajoutons à notre catalogue, en utilisant les informations dont nous disposons déjà, telles que la taille de la maison, l'âge médian des logements, le nombre de chambres, et la proximité de l'océan.
+
+L'expert en IA que nous avons recruté a déjà établi une stratégie pour résoudre ce problème : il s'agit de modéliser le prix médian des logements d'un block group en fonction de tous les autres attributs, en utilisant des modèles de régression. Par exemple, en prenant en compte des variables telles que la latitude, la longitude, le revenu médian des foyers, et la population, nous pouvons ajuster notre modèle pour prédire le prix avec une grande précision.
+
+Je fais confiance en son expertise, mais il reste encore à déterminer les différents paramètres du modèle. Des ajustements comme le choix des variables et la régularisation doivent être optimisés pour assurer que notre modèle ne sur-apprenne pas, c'est-à-dire qu'il ne s'adapte pas trop étroitement aux données d'entraînement au point de perdre sa capacité à généraliser sur de nouvelles données.
+
+Même si cela semble être une tâche réalisable, nous avons été avertis des défis liés à la validité de la solution proposée et au risque de sur-apprentissage. Pour cela, nous utiliserons, peut être, des techniques telles que la validation croisée pour évaluer la performance du modèle et détecter tout signe de sur-apprentissage. Des indicateurs de qualité comme le coefficient de détermination (R²) et l'erreur quadratique moyenne (MSE) seront essentiels pour permettre l'amélioration continue du modèle si nécessaire.
+
+Le protocole est en marche, et nous avons identifié tous les points de vigilance, à commencer par les erreurs à ne pas reproduire. Nous allons commencer par bien préparer nos données : nettoyer les valeurs manquantes, traiter les données aberrantes, et normaliser les variables pour assurer une entrée cohérente dans l'algorithme. Une fois que tout sera prêt, il ne nous restera plus qu'à industrialiser le processus, en automatisant les étapes pour garantir une efficacité et une précision maximales dans nos prédictions de prix immobiliers.
+
+Ressources pour les étudiants
+Pipeline ML
+Conférence ; Pipeline Machine Learning - M. A. Benatia
+
+Supports : PipelineML_BENATIA [pdf]
+
+Ressources principales avec mise en application
+Partie 1 - Descente de gradient [zip] : comprendre les concepts mathématiques importants
+
+Partie 2 - Linear Regression [zip]: comprendre la régression linéaire
+
+Ouvrages de référence
+Python Data Science Handbook, Jake VanderPlas
+
+Scikit-learn
+
+Workshop du prosit 2
+Sujet
+Énoncé
+Exercice
+Le WS prend la forme d'un notebook Jupyter à compléter du même style (c'est la suite) que le notebook proposé sur le prosit précédent.
+
+WS_Regression.ipynb [ipynb, 64,2 Mo]

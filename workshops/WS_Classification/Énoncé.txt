@@ -1,0 +1,76 @@
+3-Boucle PBL
+Objectifs d'apprentissage
+[3] Appliquer des approches supervisées de classification pour prédire des catégories à partir de données annotées.
+[1] Lister les différents algorithmes de classification utilisés en machine learning.
+[4] Expliquer les principes de base des algorithmes de classification supervisée (e.g., k-NN, arbres de décision, SVM).
+[4] Analyser les performances des modèles de classification supervisée à l’aide de métriques telles que la précision, le rappel, la F1-score et l'AUC.
+[6] Combiner plusieurs techniques de prétraitement et d’algorithmes pour optimiser les résultats de classification supervisée.
+[5] Utiliser la régression logistique pour prédire la probabilité d’un événement binaire, comme la vente d’un bien immobilier dans un délai donné.
+[2] Définir les concepts de classification et en comprendre les principes de fonctionnement.
+Sujet
+Énoncé
+La classe !
+Situation Actuelle
+
+Tout se déroule comme prévu pour le moment ! Les résultats semblent prometteurs et si nous continuons ainsi, la pérennité de l'entreprise est assurée. Cependant, nous avons encore un objectif crucial à atteindre pour garantir notre succès à long terme.
+
+La dernière étape de notre plan consiste à estimer le potentiel de vente de nos biens immobiliers. Cela nous permettra de faire des projections financières les plus précises possibles pour les prochains mois. Nous devons savoir, avec un haut niveau de confiance, si un bien sera vendu dans les 6 mois.
+
+Nouvelle donnée
+
+Heureusement, nous avons conservé toutes nos données de ventes passées. Ces informations sont précieuses et vont nous permettre de créer des modèles prédictifs fiables. Nous avons récemment ajouté un nouvel élément aux données du recensement : un attribut booléen nommé "Sold6M", défini à 1 si 80 % des biens gérés par l'agence dans un quartier ont été vendus dans les 6 mois, et à 0 sinon. Cette nouvelle donnée est essentielle pour notre analyse.
+
+Étant donné que nous évoluons dans le domaine financier, notre service en charge des projections est particulièrement exigeant en termes de garanties. Ils ont expressément demandé une validation rigoureuse du modèle, reposant sur des indicateurs de qualité pertinents. Nous devons nous assurer que notre modèle est non seulement précis, mais aussi fiable et robuste.
+
+Réflexion et Stratégie
+
+En réfléchissant à la meilleure approche pour garantir la qualité de notre modèle, vous vous rappelez une expérience de votre précédent emploi dans une maison de disques. Vous aviez participé à une enquête sur les ventes d'albums en utilisant deux approches, une appelée "Perceptron" et l'autre « Decision Trees ». À l'époque, vous ne saviez pas exactement ce que c'était, mais vous saviez que c'était des méthodes efficaces pour des prédictions de valeurs booléennes.
+
+Vous avez donc soumis l'idée à notre expert en IA, et il a confirmé que cela pourrait fonctionner. Il a dit : "Si une simple régression ne suffit pas, il est vrai qu'un Perceptron pourrait nous aider." Cette approbation renforce notre confiance dans cette approche. Il semble que nous soyons sur la bonne voie pour créer un modèle prédictif puissant.
+
+Enfin, quelques questions restent sans réponse, notamment pour l'Interprétation et la discussion des résultats.
+
+Performance du Modèle :
+
+Comment les différents modèles se comparent-ils en termes de performance dans le cadre de la classification supervisée ? Pouvons-nous utiliser la MSE ? Le Perceptron a-t-il apporté une amélioration significative par rapport à la régression de la boucle 2 ?
+
+Quels indicateurs de qualité utilisez-vous pour valider la performance du modèle et pourquoi ?
+
+Impact des Variables :
+
+Quels sont les attributs les plus influents dans la prédiction de la vente des biens dans les 6 mois ? Comment pouvez-vous utiliser ces informations pour améliorer vos stratégies de vente ?
+
+Limites et Améliorations :
+
+Quelles sont les limitations potentielles des modèles utilisés ? Comment pourriez-vous améliorer ces modèles à l'avenir ? Considérez les aspects de la qualité des données, de l'ingénierie des caractéristiques et de l'optimisation des hyperparamètres.
+
+Ressources pour les étudiants
+Ressources
+Vidéo d'introduction à la régression logistique et au perceptron
+
+Conférence M. A. Benatia : Machine Learning : Classification
+
+Support conférence  : MLClassification_BENATIA.pdf [pdf]
+
+Documentation Scikit-Learn : Perceptron
+
+Documentation Scikit-Learn : Regression Logistique
+
+Ouvrage de référence
+Python Data Science Handbook, Jake VanderPlas
+
+Pour aller plus loin (Techniques de l'ingénieur)
+Apprentissage statistique supervisé
+
+Régulation par réseaux de neurones
+
+Livrables attendus
+Le jeu de données :
+
+housing6month.zip [zip]
+Workshop du prosit 3
+Sujet
+Énoncé
+Exercice
+WS P3 : Classification
+WS_Classification.ipynb [ipynb, 844,7 ko]
